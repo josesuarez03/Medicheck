@@ -234,11 +234,19 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetVerifySerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     code = serializers.CharField(required=True, min_length=6, max_length=6)
-    new_password = serializers.CharField(required=True)
-    confirm_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=False, allow_blank=False)
+    confirm_password = serializers.CharField(required=False, allow_blank=False)
     
     def validate(self, data):
-        if data['new_password'] != data['confirm_password']:
+        new_password = data.get('new_password')
+        confirm_password = data.get('confirm_password')
+
+        if bool(new_password) != bool(confirm_password):
+            raise serializers.ValidationError(
+                {"confirm_password": "Debes proporcionar y confirmar la nueva contraseña."}
+            )
+
+        if new_password and new_password != confirm_password:
             raise serializers.ValidationError({"confirm_password": "Las contraseñas no coinciden"})
         return data
     

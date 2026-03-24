@@ -969,7 +969,7 @@ class PasswordResetVerifyView(APIView):
         if serializer.is_valid():
             email = serializer.validated_data['email']
             code = serializer.validated_data['code']
-            new_password = serializer.validated_data['new_password']
+            new_password = serializer.validated_data.get('new_password')
             
             try:
                 user = User.objects.get(email=email)
@@ -982,6 +982,12 @@ class PasswordResetVerifyView(APIView):
                     return Response(
                         {"error": "El código de verificación es inválido o ha expirado."},
                         status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if not new_password:
+                    return Response(
+                        {"message": "Código verificado correctamente."},
+                        status=status.HTTP_200_OK
                     )
                 
                 # Establecer la nueva contraseña
