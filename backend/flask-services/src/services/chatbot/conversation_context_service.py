@@ -38,6 +38,16 @@ class ConversationContextService:
     def _loop_key(self, user_id: str, conversation_id: str) -> str:
         return self.KEY_LOOP.format(user_id=user_id, conversation_id=conversation_id)
 
+    @staticmethod
+    def _redis_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        if isinstance(value, str):
+            return value
+        return str(value)
+
     def _embed_text(self, text: str) -> List[float]:
         if not text:
             return []
@@ -77,7 +87,7 @@ class ConversationContextService:
 
         summary_key = self._summary_key(user_id, conversation_id)
         previous_summary = context_redis_client.get(summary_key)
-        prev_text = previous_summary.decode("utf-8") if previous_summary else ""
+        prev_text = self._redis_text(previous_summary)
         new_summary = f"{prev_text}\nPaciente: {user_msg}\nAsistente: {bot_msg}".strip()
         context_redis_client.set(summary_key, new_summary, ex=self.context_ttl)
 
@@ -202,7 +212,7 @@ class ConversationContextService:
         payload = {"last": assistant_message, "last_intents": current_intents, "count": 1}
         if previous:
             try:
-                data = json.loads(previous)
+                data = json.loads(self._redis_text(previous))
                 same_text = data.get("last", "").strip().lower() == assistant_message.strip().lower()
                 prev_intents = data.get("last_intents", [])
                 same_intent = bool(set(prev_intents) & set(current_intents))
@@ -215,7 +225,7 @@ class ConversationContextService:
 
     def get_summary(self, user_id: str, conversation_id: str) -> str:
         raw = context_redis_client.get(self._summary_key(user_id, conversation_id))
-        return raw.decode("utf-8") if raw else ""
+        return self._redis_text(raw)
 
     def build_prompt_context(
         self,

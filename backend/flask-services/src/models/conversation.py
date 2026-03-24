@@ -74,8 +74,19 @@ class ConversationalDatasetManager:
     def _decrypt_json_field(self, value):
         if value in (None, ""):
             return value
-        decrypted = self._encryption().decrypt_string(value)
-        return json.loads(decrypted)
+        if isinstance(value, (dict, list)):
+            return value
+        if not isinstance(value, str):
+            return value
+
+        try:
+            decrypted = self._encryption().decrypt_string(value)
+            return json.loads(decrypted)
+        except Exception:
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
 
     def _encrypt_sensitive_fields(self, conversation):
         if not isinstance(conversation, dict):
@@ -89,13 +100,11 @@ class ConversationalDatasetManager:
     def _decrypt_sensitive_fields(self, conversation):
         if not isinstance(conversation, dict):
             return conversation
-        if conversation.get("schema_version", 1) < ENCRYPTED_CONVERSATION_SCHEMA_VERSION:
-            return conversation
         decrypted = dict(conversation)
-        if isinstance(decrypted.get("messages"), str):
-            decrypted["messages"] = self._decrypt_json_field(decrypted["messages"])
-        if isinstance(decrypted.get("medical_context"), str):
-            decrypted["medical_context"] = self._decrypt_json_field(decrypted["medical_context"])
+        if "messages" in decrypted:
+            decrypted["messages"] = self._decrypt_json_field(decrypted.get("messages"))
+        if "medical_context" in decrypted:
+            decrypted["medical_context"] = self._decrypt_json_field(decrypted.get("medical_context"))
         return decrypted
 
     def _uuid_to_binary(self, uuid_obj):

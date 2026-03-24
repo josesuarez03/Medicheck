@@ -50,7 +50,8 @@ services:
       MONGO_PORT: ${MONGO_PORT}
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
-      DJANGO_API_URL: ${DJANGO_API_URL}
+      DJANGO_API_URL: ${DJANGO_API_URL_FLASK}
+      DJANGO_API_URL_FLASK: ${DJANGO_API_URL_FLASK}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3).read()"]
       interval: 10s

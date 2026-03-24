@@ -7,6 +7,7 @@ from config.config import Config
 from services.api.send_api import get_patient_global_context
 from services.chatbot.application.chat_turn_helpers import (
     _append_missing_questions_to_response,
+    _build_progress_fallback_response,
     _build_expert_response_data,
     _compact_llm_guidance,
     _expert_state_payload,
@@ -29,6 +30,23 @@ from services.expert_system.orchestrator import ExpertOrchestrator
 
 # Configurar logger
 logger = logging.getLogger(__name__)
+
+
+def _has_actionable_llm_output(candidate):
+    if not isinstance(candidate, dict):
+        return False
+
+    response_text = candidate.get("response")
+    if isinstance(response_text, str) and response_text.strip():
+        return True
+
+    if _extract_questions(candidate):
+        return True
+
+    missing_questions = candidate.get("missing_questions", [])
+    return isinstance(missing_questions, list) and any(
+        isinstance(question, str) and question.strip() for question in missing_questions
+    )
 
 # Singleton para orquestación
 expert_orchestrator = ExpertOrchestrator()
@@ -155,8 +173,10 @@ def process_message_logic(user_id, user_message, user_data, conversation_id, jwt
             existing_context=existing_context,
             postgres_context=postgres_context,
         )
-        if isinstance(llm_candidate, dict) and "error" not in llm_candidate:
+        if isinstance(llm_candidate, dict) and "error" not in llm_candidate and _has_actionable_llm_output(llm_candidate):
             llm_response_data = llm_candidate
+        elif isinstance(llm_candidate, dict) and "error" not in llm_candidate:
+            logger.warning("Fallback LLM candidate returned no actionable response or questions.")
         elif isinstance(llm_candidate, dict) and llm_candidate.get("error"):
             logger.warning("Fallback LLM candidate returned error: %s", llm_candidate.get("error"))
     except Exception as e:
@@ -253,9 +273,19 @@ def process_message_logic(user_id, user_message, user_data, conversation_id, jwt
             else:
                 response_text = f"Para continuar:\n1. {questions_selected[0]}\n2. {questions_selected[1]}"
         else:
-            response_text = "Gracias por la información. Continuemos con una pregunta clínica adicional."
+            response_text = _build_progress_fallback_response(
+                user_message=user_message,
+                current_conversation=current_conversation,
+                context_final=context_final,
+            )
     elif controller_mode != "emergency_combined":
         response_text = _append_missing_questions_to_response(response_text, questions_selected)
+
+    # If the current turn is still asking for more clinical data, do not mark the
+    # conversation as final triage advice yet.
+    if questions_selected or "?" in response_text:
+        conversation_state["next_intent"] = "collect_missing_data"
+
     symptoms = selected.get("symptoms", [])
     if not symptoms:
         symptoms = expert_response_data.get("symptoms", [])

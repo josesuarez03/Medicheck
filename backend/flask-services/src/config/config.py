@@ -25,7 +25,11 @@ class Config:
     # Configuraciones de la aplicación
     DEBUG = os.getenv('DEBUG') == 'True'
     SECRET_KEY = os.getenv("SECRET_KEY",)
+    DJANGO_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+    JWT_SECRET_ENV = os.getenv("JWT_SECRET_KEY")
     FLASK_API_KEY = os.getenv("FLASK_API_KEY")
+    DJANGO_API_URL = os.getenv("DJANGO_API_URL")
+    DJANGO_API_URL_FLASK = os.getenv("DJANGO_API_URL_FLASK")
     MONGO_ENCRYPTION_KEY = os.getenv(
         "MONGO_ENCRYPTION_KEY",
         base64.urlsafe_b64encode(hashlib.sha256((SECRET_KEY or "").encode("utf-8")).digest()).decode("utf-8"),
@@ -63,9 +67,9 @@ class Config:
     CHAT_EXPERT_GUARD_MAX_QUESTIONS = _as_int(os.getenv("CHAT_EXPERT_GUARD_MAX_QUESTIONS"), 1)
     CHAT_DECISION_LOG_FLAGS = os.getenv("CHAT_DECISION_LOG_FLAGS", "true").strip().lower() in {"1", "true", "yes", "on"}
 
-    # Usar la clave secreta de Django si está disponible
-    JWT_SECRET =  SECRET_KEY
-    JWT_SECRET_KEY = SECRET_KEY
+    # Usar una clave dedicada para JWT; si no existe, mantener compatibilidad hacia atras.
+    JWT_SECRET = JWT_SECRET_ENV
+    JWT_SECRET_KEY = JWT_SECRET
     JWT_ALGORITHM =  os.getenv("JWT_ALGORITHM")
     DJANGO_INTEGRATION = os.getenv("DJANGO_INTEGRATION", "False") == "True"
 
@@ -75,6 +79,14 @@ class Config:
 
     @classmethod
     def validate(cls):
+        if cls.JWT_SECRET_ENV and (
+            (cls.DJANGO_SECRET_KEY and cls.JWT_SECRET_ENV != cls.DJANGO_SECRET_KEY)
+            or (cls.SECRET_KEY and cls.JWT_SECRET_ENV != cls.SECRET_KEY)
+        ):
+            logger.warning(
+                "JWT_SECRET_KEY esta configurada y se usara como clave dedicada para validar JWT."
+            )
+
         required_vars = {
             "FLASK_API_KEY": cls.FLASK_API_KEY,
             "REDIS_PASSWORD": cls.REDIS_PASSWORD,

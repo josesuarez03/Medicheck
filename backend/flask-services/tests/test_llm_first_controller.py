@@ -223,6 +223,64 @@ class LlmFirstControllerTests(unittest.TestCase):
         self.assertEqual(payload["response_source"], "expert")
         self.assertIn("expert_confident_case_match", payload["decision_flags"]["reasons"])
 
+    def test_reasks_previous_question_when_user_only_asks_to_continue(self):
+        fake_decision = _fake_decision(
+            action="fallback_ai",
+            case_id=None,
+            response="",
+            state=_fake_state(
+                active_case_id=None,
+                active_node_id=None,
+                required_fields_status={},
+                fallback_reason="no_case_match",
+            ),
+        )
+        llm_payload = {
+            "context": {},
+            "triaje_level": "Leve",
+            "entities": [],
+            "response": "",
+            "symptoms": [],
+            "symptoms_pattern": {},
+            "pain_scale": 0,
+            "missing_questions": [],
+            "analysis_type": "general_response",
+            "conversation_state": {
+                "next_intent": "collect_missing_data",
+                "questions_selected": [],
+            },
+        }
+        current_conversation = {
+            "_id": "conv-3",
+            "messages": [
+                {"role": "user", "content": "Tengo la nariz tapada"},
+                {"role": "assistant", "content": PAIN_SCALE_QUESTION},
+                {"role": "user", "content": "7"},
+                {"role": "assistant", "content": "Gracias por la información."},
+            ],
+            "medical_context": {"context_snapshot": {}},
+        }
+        with patch.object(route_utils.expert_orchestrator, "evaluate", return_value=fake_decision), patch.object(
+            route_utils.fallback_model_adapter, "respond", return_value=llm_payload
+        ), patch.object(route_utils.conversational_dataset_manager, "get_conversation", return_value=current_conversation), patch.object(
+            route_utils.conversational_dataset_manager, "update_conversation", return_value=None
+        ), patch.object(
+            route_utils.conversation_context_service, "append_turn", return_value=None
+        ), patch(
+            "routes.utils.schedule_inactivity_etl", return_value=None
+        ):
+            payload, status_code = route_utils.process_message_logic(
+                user_id="user-1",
+                user_message="cual es la siguiente pregunta",
+                user_data={},
+                conversation_id="conv-3",
+                jwt_token=None,
+            )
+
+        self.assertEqual(status_code, 200)
+        self.assertIn("Para continuar, necesito que respondas a esta pregunta:", payload["ai_response"])
+        self.assertIn(PAIN_SCALE_QUESTION, payload["ai_response"])
+
 
 if __name__ == "__main__":
     unittest.main()

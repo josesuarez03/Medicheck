@@ -380,3 +380,68 @@ def _append_missing_questions_to_response(response_text: str, questions_selected
     if len(missing) == 1:
         return f"{response_text}\n\nPara continuar:\n{missing[0]}"
     return f"{response_text}\n\nPara continuar:\n1. {missing[0]}\n2. {missing[1]}"
+
+
+LOW_INFORMATION_MESSAGES = {
+    "ok",
+    "oka",
+    "vale",
+    "si",
+    "sí",
+    "de acuerdo",
+    "entendido",
+    "continua",
+    "continúa",
+    "sigue",
+    "seguir",
+}
+
+
+def _looks_like_progress_prompt(user_message: str) -> bool:
+    normalized = _normalize_user_text(user_message)
+    if not normalized:
+        return False
+    if normalized in LOW_INFORMATION_MESSAGES:
+        return True
+    return "siguiente pregunta" in normalized or "continua" in normalized or "continua con" in normalized
+
+
+def _find_latest_assistant_question(current_conversation: Dict[str, Any] | None) -> str:
+    if not isinstance(current_conversation, dict):
+        return ""
+    messages = current_conversation.get("messages", [])
+    if not isinstance(messages, list):
+        return ""
+
+    for msg in reversed(messages):
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        content = str(msg.get("content") or "").strip()
+        if "?" in content:
+            return content
+    return ""
+
+
+def _build_progress_fallback_response(
+    *,
+    user_message: str,
+    current_conversation: Dict[str, Any] | None,
+    context_final: Dict[str, Any],
+) -> str:
+    latest_question = _find_latest_assistant_question(current_conversation)
+    if latest_question and _looks_like_progress_prompt(user_message):
+        return f"Para continuar, necesito que respondas a esta pregunta:\n{latest_question}"
+
+    if not context_final.get("symptom_duration"):
+        return "Para continuar:\n¿Cuánto tiempo llevas con este síntoma?"
+
+    if context_final.get("pain_level_reported") in (None, "", [], {}) and context_final.get("pain_scale", 0) == 0:
+        return "Para continuar:\nEn una escala del 1 al 10, ¿qué tan intenso es el dolor ahora?"
+
+    if not context_final.get("red_flags_checked"):
+        return "Para continuar:\n¿Tienes fiebre, dificultad para respirar, dolor en el pecho o te has desmayado?"
+
+    if latest_question:
+        return f"Para continuar:\n{latest_question}"
+
+    return "Para continuar:\n¿Qué es lo que más lo empeora o lo mejora?"
