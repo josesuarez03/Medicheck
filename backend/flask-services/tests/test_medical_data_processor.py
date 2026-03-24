@@ -33,6 +33,7 @@ sys.modules.setdefault("services.chatbot.bedrock_claude", fake_bedrock_module)
 from services.api.send_api import _auth_headers, _sign_internal_payload  # noqa: E402
 from services.process_data.medical_data import MedicalDataProcessor  # noqa: E402
 from config.config import Config  # noqa: E402
+from services.security.encryption import Encryption  # noqa: E402
 
 
 class MedicalDataProcessorTests(unittest.TestCase):
@@ -79,6 +80,18 @@ class MedicalDataProcessorTests(unittest.TestCase):
             with self.assertRaises(EnvironmentError):
                 Config.validate()
         Config.REDIS_PASSWORD = original_password
+
+    def test_validate_fails_when_mongo_encryption_key_is_invalid(self):
+        original_key = Config.MONGO_ENCRYPTION_KEY
+        with patch.dict(os.environ, {"MONGO_ENCRYPTION_KEY": "invalid-key"}, clear=False):
+            Config.MONGO_ENCRYPTION_KEY = "invalid-key"
+            with self.assertRaises(EnvironmentError):
+                Config.validate()
+        Config.MONGO_ENCRYPTION_KEY = original_key
+
+    def test_encryption_requires_valid_fernet_key(self):
+        with self.assertRaises(ValueError):
+            Encryption(key="invalid-key")
 
 
 if __name__ == "__main__":

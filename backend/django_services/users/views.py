@@ -40,9 +40,17 @@ from .serializers import (
 )
 from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation
 from .throttles import LoginRateThrottle, PasswordResetRateThrottle
+from .utils.audit import create_audit_entry
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+
+def _request_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR")
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -404,6 +412,7 @@ class PatientMedicalDataUpdateView(APIView):
             )
         
         # Actualizar información del paciente con los datos validados
+        before_snapshot = patient.clinical_snapshot()
         updated = patient.update_from_chatbot_analysis(
             serializer.validated_data,
             created_by=authenticated_user
@@ -412,6 +421,18 @@ class PatientMedicalDataUpdateView(APIView):
         if updated:
             # Obtener la última entrada de historial creada
             latest_history = patient.history_entries.first()
+            patient.refresh_from_db()
+            after_snapshot = patient.clinical_snapshot()
+            create_audit_entry(
+                actor_user=authenticated_user,
+                actor_service='flask-chatbot' if internal_request else None,
+                actor_ip=_request_ip(request),
+                action='patient_medical_data_update',
+                resource_type='patient',
+                resource_id=str(patient.id),
+                data_before=before_snapshot,
+                data_after=after_snapshot,
+            )
             
             # Verificar si la actualización completó el perfil del usuario
             user.check_profile_completion()
@@ -543,6 +564,7 @@ class PatientHistoryCreateView(APIView):
     def post(self, request, patient_id):
         try:
             patient = Patient.objects.get(id=patient_id)
+            before_snapshot = patient.clinical_snapshot()
             
             # Verificar permisos
             user = request.user
@@ -610,6 +632,20 @@ class PatientHistoryCreateView(APIView):
                 
                 patient.save(update_fields=fields_to_update)
                 patient.user.check_profile_completion()
+
+            create_audit_entry(
+                actor_user=user,
+                actor_service=None,
+                actor_ip=_request_ip(request),
+                action='patient_history_create',
+                resource_type='patient_history_entry',
+                resource_id=str(history_entry.id),
+                data_before=before_snapshot,
+                data_after={
+                    'history_entry': history_entry.clinical_snapshot(),
+                    'patient': patient.clinical_snapshot(),
+                },
+            )
             
             return Response(
                 PatientHistoryEntrySerializer(history_entry).data,
@@ -1006,9 +1042,24 @@ class AccountDeleteView(APIView):
     permission_classes = [IsAuthenticated]
     
     def delete(self, request):
+        user_snapshot = {
+            "id": str(request.user.id),
+            "email": request.user.email,
+            "tipo": request.user.tipo,
+            "is_active": request.user.is_active,
+        }
 
         # Para cuentas OAuth, no requiere contraseña
         if request.user.oauth_provider and request.user.oauth_uid:
+            create_audit_entry(
+                actor_user=request.user,
+                actor_ip=_request_ip(request),
+                action='account_delete',
+                resource_type='user',
+                resource_id=str(request.user.id),
+                data_before=user_snapshot,
+                data_after={"deleted": True},
+            )
             request.user.delete()
             return Response(
                 {"message": "Tu cuenta ha sido eliminada correctamente."},
@@ -1034,6 +1085,15 @@ class AccountDeleteView(APIView):
             )
             
         # Eliminar la cuenta
+        create_audit_entry(
+            actor_user=request.user,
+            actor_ip=_request_ip(request),
+            action='account_delete',
+            resource_type='user',
+            resource_id=str(request.user.id),
+            data_before=user_snapshot,
+            data_after={"deleted": True},
+        )
         request.user.delete()
         return Response(
             {"message": "Tu cuenta ha sido eliminada correctamente."},

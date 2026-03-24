@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 import os
 import logging
+import base64
+import hashlib
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +25,11 @@ class Config:
     # Configuraciones de la aplicación
     DEBUG = os.getenv('DEBUG') == 'True'
     SECRET_KEY = os.getenv("SECRET_KEY",)
-    FLASK_API_KEY = os.getenv("FLASK_API_KEY", SECRET_KEY)
+    FLASK_API_KEY = os.getenv("FLASK_API_KEY")
+    MONGO_ENCRYPTION_KEY = os.getenv(
+        "MONGO_ENCRYPTION_KEY",
+        base64.urlsafe_b64encode(hashlib.sha256((SECRET_KEY or "").encode("utf-8")).digest()).decode("utf-8"),
+    )
 
     # Credenciales para Amazon Web Services
     AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY") or os.getenv("AWS_ACCESS_KEY_ID")
@@ -75,6 +81,7 @@ class Config:
             "REDIS_HOST": cls.REDIS_HOST,
             "REDIS_PORT": cls.REDIS_PORT,
             "SECRET_KEY": cls.SECRET_KEY,
+            "MONGO_ENCRYPTION_KEY": cls.MONGO_ENCRYPTION_KEY,
             "JWT_ALGORITHM": cls.JWT_ALGORITHM,
             "MONGO_HOST": cls.MONGO_HOST,
             "MONGO_PORT": cls.MONGO_PORT,
@@ -87,3 +94,9 @@ class Config:
             raise EnvironmentError(
                 f"Variables de entorno requeridas ausentes o vacias: {', '.join(sorted(missing))}"
             )
+        try:
+            from cryptography.fernet import Fernet
+
+            Fernet(cls.MONGO_ENCRYPTION_KEY.encode("utf-8"))
+        except Exception as exc:
+            raise EnvironmentError("MONGO_ENCRYPTION_KEY no es una clave Fernet valida.") from exc

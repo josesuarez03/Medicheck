@@ -3,6 +3,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from common.security.encrypted_fields import EncryptedTextField
 from common.security.utils import sanitize_input
 
 class User(AbstractUser):
@@ -136,10 +137,10 @@ class Patient(models.Model):
     triaje_level = models.CharField(max_length=20, blank=True, null=True)
     ocupacion = models.CharField(max_length=100, blank=True, null=True)
     pain_scale = models.IntegerField(blank=True, null=True)
-    medical_context = models.TextField(blank=True, null=True)
-    allergies = models.TextField(blank=True, null=True)
-    medications = models.TextField(blank=True, null=True)
-    medical_history = models.TextField(blank=True, null=True)
+    medical_context = EncryptedTextField(blank=True, null=True)
+    allergies = EncryptedTextField(blank=True, null=True)
+    medications = EncryptedTextField(blank=True, null=True)
+    medical_history = EncryptedTextField(blank=True, null=True)
     
     # Campos para validación de datos por médicos
     data_validated_by = models.ForeignKey('Doctor', on_delete=models.SET_NULL, null=True, blank=True, related_name='validated_patients')
@@ -234,6 +235,21 @@ class Patient(models.Model):
         
         return False
 
+    def clinical_snapshot(self):
+        return {
+            'triaje_level': self.triaje_level,
+            'pain_scale': self.pain_scale,
+            'medical_context': self.medical_context,
+            'allergies': self.allergies,
+            'medications': self.medications,
+            'medical_history': self.medical_history,
+            'ocupacion': self.ocupacion,
+            'is_data_validated': self.is_data_validated,
+            'data_validated_by': str(self.data_validated_by_id) if self.data_validated_by_id else None,
+            'data_validated_at': self.data_validated_at.isoformat() if self.data_validated_at else None,
+            'last_chatbot_analysis': self.last_chatbot_analysis.isoformat() if self.last_chatbot_analysis else None,
+        }
+
 class DoctorPatientRelation(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     doctor = models.ForeignKey('Doctor', on_delete=models.CASCADE, related_name='patient_relations')
@@ -264,10 +280,10 @@ class PatientHistoryEntry(models.Model):
     # Campos médicos - copia de los campos en Patient
     triaje_level = models.CharField(max_length=20, blank=True, null=True)
     pain_scale = models.IntegerField(blank=True, null=True)
-    medical_context = models.TextField(blank=True, null=True)
-    allergies = models.TextField(blank=True, null=True)
-    medications = models.TextField(blank=True, null=True)
-    medical_history = models.TextField(blank=True, null=True)
+    medical_context = EncryptedTextField(blank=True, null=True)
+    allergies = EncryptedTextField(blank=True, null=True)
+    medications = EncryptedTextField(blank=True, null=True)
+    medical_history = EncryptedTextField(blank=True, null=True)
     ocupacion = models.CharField(max_length=100, blank=True, null=True)
     
     # Metadatos del registro
@@ -303,3 +319,44 @@ class PatientHistoryEntry(models.Model):
         if self.ocupacion:
             self.ocupacion = sanitize_input(self.ocupacion)
         super().save(*args, **kwargs)
+
+    def clinical_snapshot(self):
+        return {
+            'id': str(self.id),
+            'patient_id': str(self.patient_id),
+            'triaje_level': self.triaje_level,
+            'pain_scale': self.pain_scale,
+            'medical_context': self.medical_context,
+            'allergies': self.allergies,
+            'medications': self.medications,
+            'medical_history': self.medical_history,
+            'ocupacion': self.ocupacion,
+            'source': self.source,
+            'created_by': str(self.created_by_id) if self.created_by_id else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'notes': self.notes,
+        }
+
+
+class AuditLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs')
+    actor_service = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    actor_ip = models.GenericIPAddressField(blank=True, null=True)
+    action = models.CharField(max_length=100, db_index=True)
+    resource_type = models.CharField(max_length=100, db_index=True)
+    resource_id = models.CharField(max_length=100, db_index=True)
+    data_before = models.JSONField(blank=True, null=True)
+    data_after = models.JSONField(blank=True, null=True)
+    content_hash = models.CharField(max_length=64)
+    signature = models.CharField(max_length=64)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = _('registro de auditoría')
+        verbose_name_plural = _('registros de auditoría')
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['resource_type', 'resource_id', 'timestamp']),
+            models.Index(fields=['actor_user', 'timestamp']),
+        ]

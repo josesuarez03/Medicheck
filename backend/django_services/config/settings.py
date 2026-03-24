@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
+from cryptography.fernet import Fernet
 
 load_dotenv()
 
@@ -216,6 +218,21 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # tu dirección de correo electr
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # tu contraseña de correo electrónico
 
 FLASK_API_KEY = os.getenv('FLASK_API_KEY', os.getenv('DJANGO_SECRET_KEY', ''))
+FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', '')
+AUDIT_SIGNING_KEY = os.getenv('AUDIT_SIGNING_KEY', '')
+
+if not FLASK_API_KEY:
+    raise ImproperlyConfigured("FLASK_API_KEY must be configured.")
+if not CACHE_REDIS_PASSWORD:
+    raise ImproperlyConfigured("REDIS_PASSWORD must be configured.")
+if not FIELD_ENCRYPTION_KEY:
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEY must be configured.")
+if not AUDIT_SIGNING_KEY:
+    raise ImproperlyConfigured("AUDIT_SIGNING_KEY must be configured.")
+try:
+    Fernet(FIELD_ENCRYPTION_KEY.encode("utf-8"))
+except Exception as exc:
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEY must be a valid Fernet key.") from exc
 
 if not DEBUG:
     ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host != '*']

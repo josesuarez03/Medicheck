@@ -10,6 +10,8 @@ from rest_framework.test import APIClient
 
 from .models import Patient, PatientHistoryEntry, User
 from .serializers import ChatbotAnalysisSerializer
+from .utils.audit import create_audit_entry, verify_audit_entry
+from common.security.encrypted_fields import ENCRYPTED_VALUE_PREFIX
 
 
 def _sign_payload(payload, timestamp=None):
@@ -171,3 +173,25 @@ class SecurityViewsTests(TestCase):
         )
 
         self.assertNotEqual(response.headers.get("Access-Control-Allow-Origin"), "*")
+
+    def test_create_audit_entry_signs_actor_and_timestamp_metadata(self):
+        entry = create_audit_entry(
+            actor_user=self.user,
+            actor_service="flask-chatbot",
+            actor_ip="127.0.0.1",
+            action="patient_medical_data_update",
+            resource_type="patient",
+            resource_id=str(self.patient.id),
+            data_before={"pain_scale": 2},
+            data_after={"pain_scale": 4},
+        )
+
+        self.assertTrue(verify_audit_entry(entry))
+        entry.actor_ip = "10.0.0.5"
+        self.assertFalse(verify_audit_entry(entry))
+
+    def test_encrypted_text_field_prep_value_encrypts_plaintext(self):
+        raw_db_value = Patient._meta.get_field("medical_context").get_prep_value("Texto clinico sensible")
+
+        self.assertTrue(raw_db_value.startswith(ENCRYPTED_VALUE_PREFIX))
+        self.assertNotIn("Texto clinico sensible", raw_db_value)

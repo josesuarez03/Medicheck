@@ -8,8 +8,10 @@ import numpy as np
 
 from config.config import Config
 from data.connect import context_redis_client, mongo_db
+from models.conversation import ConversationalDatasetManager
 
 logger = logging.getLogger(__name__)
+conversation_dataset_manager = ConversationalDatasetManager()
 
 
 class ConversationContextService:
@@ -170,6 +172,7 @@ class ConversationContextService:
         )
         compact = []
         for conv in conversations:
+            conv = conversation_dataset_manager._serialize_conversation_record(conv)
             msgs = conv.get("messages", [])[-4:]
             compact.append(
                 {
