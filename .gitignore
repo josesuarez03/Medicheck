@@ -528,4 +528,6 @@ plan_mejoras_hipo (1).md
 *.ini
 .agents
 skills-lock.json
-/docs
+/docs/images
+/docs/architecture
+/docs/academic
