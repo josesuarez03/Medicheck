@@ -40,24 +40,31 @@ class Config:
     AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY")
     AWS_REGION = os.getenv("AWS_REGION")
     BEDROCK_EMBEDDING_MODEL_ID = os.getenv("BEDROCK_EMBEDDING_MODEL_ID")
+    BEDROCK_EMBEDDING_DIMENSIONS = _as_int(os.getenv("BEDROCK_EMBEDDING_DIMENSIONS"))
     BEDROCK_CLAUDE_MODEL_ID = os.getenv("BEDROCK_CLAUDE_MODEL_ID")
     BEDROCK_CLAUDE_INFERENCE_PROFILE_ID = os.getenv("BEDROCK_CLAUDE_INFERENCE_PROFILE_ID")
 
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST")
+    POSTGRES_PORT = _as_int(os.getenv("POSTGRES_PORT"))
+    POSTGRES_DB = os.getenv("POSTGRES_DB")
+    POSTGRES_USER = os.getenv("POSTGRES_USER")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+
     # Configuración MongoDB - usar nombres de host de Docker si estamos en contenedores
     MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
-    MONGO_PORT = _as_int(os.getenv("MONGO_PORT"), 27017)
+    MONGO_PORT = _as_int(os.getenv("MONGO_PORT"))
     MONGO_DB = os.getenv("MONGO_INITDB_DATABASE", "DB")
     MONGO_USER = os.getenv("MONGO_INITDB_ROOT_USERNAME")
     MONGO_PASS = os.getenv("MONGO_INITDB_ROOT_PASSWORD")
 
     # Configuración Redis - usar nombres de host de Docker si estamos en contenedores
     REDIS_HOST = os.getenv("REDIS_HOST")
-    REDIS_PORT = _as_int(os.getenv("REDIS_PORT"), 6379)
+    REDIS_PORT = _as_int(os.getenv("REDIS_PORT"))
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
     REDIS_USE_TLS = os.getenv("REDIS_USE_TLS", "False").strip().lower() in {"1", "true", "yes", "on"}
     REDIS_SSL_CERT_REQS = os.getenv("REDIS_SSL_CERT_REQS", "required").strip().lower()
-    REDIS_DB = _as_int(os.getenv("REDIS_DB"), 0)
-    CHAT_REDIS_DB_CONTEXT = _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"), 2)
+    REDIS_DB = _as_int(os.getenv("REDIS_DB"))
+    CHAT_REDIS_DB_CONTEXT = _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"))
     CHAT_CONTEXT_TTL_SECONDS = _as_int(os.getenv("CHAT_CONTEXT_TTL_SECONDS"), 60 * 60 * 24)
     CHAT_CONTEXT_WINDOW_N = _as_int(os.getenv("CHAT_CONTEXT_WINDOW_N"), 8)
     CHAT_CONTEXT_TOP_K = _as_int(os.getenv("CHAT_CONTEXT_TOP_K"), 5)
