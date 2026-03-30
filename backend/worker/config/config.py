@@ -56,13 +56,18 @@ class Config:
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
     REDIS_USE_TLS = os.getenv("REDIS_USE_TLS", "False").strip().lower() in {"1", "true", "yes", "on"}
     REDIS_SSL_CERT_REQS = os.getenv("REDIS_SSL_CERT_REQS", "required").strip().lower()
-    REDIS_DB = _as_int(os.getenv("REDIS_DB"), 0)
-    REDIS_DB_CONVERSATIONS = _as_int(os.getenv("REDIS_DB_CONVERSATIONS"), REDIS_DB)
+    REDIS_DB = _as_int(os.getenv("REDIS_DB_SESSIONS"), _as_int(os.getenv("REDIS_DB"), 0))
+    REDIS_DB_CONVERSATIONS = _as_int(
+        os.getenv("REDIS_DB_CONVERSATIONS"),
+        _as_int(os.getenv("REDIS_DB_CONTEXT"), 2),
+    )
     REDIS_DB_CONTEXT = _as_int(
         os.getenv("REDIS_DB_CONTEXT"),
         _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"), 2),
     )
-    REDIS_DB_WORKER = _as_int(os.getenv("REDIS_DB_WORKER"), 3)
+    REDIS_DB_WORKER = _as_int(os.getenv("REDIS_DB_WORKER"), _as_int(os.getenv("REDIS_DB_EPHEMERAL"), 6))
+    REDIS_DB_CELERY_RESULTS = _as_int(os.getenv("REDIS_DB_CELERY_RESULTS"), 4)
+    REDIS_DB_CHAT_BROKER = _as_int(os.getenv("REDIS_DB_CHAT_BROKER"), 3)
     CHAT_REDIS_DB_CONTEXT = REDIS_DB_CONTEXT
     CHAT_CONTEXT_TTL_SECONDS = _as_int(os.getenv("CHAT_CONTEXT_TTL_SECONDS"), 60 * 60 * 24)
     CHAT_CONTEXT_WINDOW_N = _as_int(os.getenv("CHAT_CONTEXT_WINDOW_N"), 8)
@@ -87,7 +92,7 @@ class Config:
     CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", RABBITMQ_URL)
     CELERY_RESULT_BACKEND = os.getenv(
         "CELERY_RESULT_BACKEND",
-        f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_WORKER}" if REDIS_PASSWORD and REDIS_HOST else "",
+        f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_CELERY_RESULTS}" if REDIS_PASSWORD and REDIS_HOST else "",
     )
     ETL_QUEUE_NAME = os.getenv("ETL_QUEUE", "etl_queue")
     CHAT_QUEUE_NAME = os.getenv("CHAT_QUEUE", "chat_queue")

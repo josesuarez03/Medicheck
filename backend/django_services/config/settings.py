@@ -184,7 +184,8 @@ ACCOUNT_EMAIL_VERIFICATION = "optional"
 
 AUTH_USER_MODEL = 'users.User'
 SESSION_COOKIE_AGE = 3600  # 1 hora de sesión
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'default'
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
@@ -199,7 +200,7 @@ CACHE_REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
 CACHE_REDIS_USE_TLS = os.getenv('REDIS_USE_TLS', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 CACHE_REDIS_SCHEME = 'rediss' if CACHE_REDIS_USE_TLS else 'redis'
 CACHE_REDIS_AUTH = f":{CACHE_REDIS_PASSWORD}@" if CACHE_REDIS_PASSWORD else ""
-CACHE_REDIS_DB = os.getenv('REDIS_DB_CACHE', os.getenv('REDIS_DB1', '1'))
+CACHE_REDIS_DB = os.getenv('REDIS_DB_CACHE', os.getenv('REDIS_DB_SESSIONS', os.getenv('REDIS_DB', '0')))
 
 CACHES = {
     'default': {

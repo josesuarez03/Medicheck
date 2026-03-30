@@ -80,7 +80,7 @@ class DoctorPatientRelationSerializer(serializers.ModelSerializer):
         return f"{obj.patient.user.first_name} {obj.patient.user.last_name}"
 
 class PatientSerializer(serializers.ModelSerializer):
-    doctors = DoctorBasicSerializer(many=True, read_only=True)
+    doctors = serializers.SerializerMethodField(read_only=True)
     data_validator = serializers.SerializerMethodField(read_only=True)
     history_count = serializers.SerializerMethodField(read_only=True)
     
@@ -97,12 +97,22 @@ class PatientSerializer(serializers.ModelSerializer):
         if obj.data_validated_by:
             return f"Dr. {obj.data_validated_by.user.first_name} {obj.data_validated_by.user.last_name}"
         return None
+
+    def get_doctors(self, obj):
+        relations = getattr(obj, "prefetched_active_doctor_relations", None)
+        if relations is None:
+            relations = obj.doctor_relations.filter(active=True).select_related("doctor__user")
+        doctors = [relation.doctor for relation in relations if relation.doctor_id]
+        return DoctorBasicSerializer(doctors, many=True).data
     
     def get_history_count(self, obj):
+        annotated_value = getattr(obj, "history_count", None)
+        if annotated_value is not None:
+            return annotated_value
         return obj.history_entries.count()
 
 class DoctorSerializer(serializers.ModelSerializer):
-    patients = PatientBasicSerializer(many=True, read_only=True)
+    patients = serializers.SerializerMethodField(read_only=True)
     full_name = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
@@ -112,6 +122,13 @@ class DoctorSerializer(serializers.ModelSerializer):
     
     def get_full_name(self, obj):
         return f"Dr. {obj.user.first_name} {obj.user.last_name}"
+
+    def get_patients(self, obj):
+        relations = getattr(obj, "prefetched_active_patient_relations", None)
+        if relations is None:
+            relations = obj.patient_relations.filter(active=True).select_related("patient__user")
+        patients = [relation.patient for relation in relations if relation.patient_id]
+        return PatientBasicSerializer(patients, many=True).data
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

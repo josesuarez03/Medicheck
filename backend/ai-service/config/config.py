@@ -63,12 +63,16 @@ class Config:
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
     REDIS_USE_TLS = os.getenv("REDIS_USE_TLS", "False").strip().lower() in {"1", "true", "yes", "on"}
     REDIS_SSL_CERT_REQS = os.getenv("REDIS_SSL_CERT_REQS", "required").strip().lower()
-    REDIS_DB = _as_int(os.getenv("REDIS_DB"), 0)
-    REDIS_DB_CONVERSATIONS = _as_int(os.getenv("REDIS_DB_CONVERSATIONS"), REDIS_DB)
+    REDIS_DB = _as_int(os.getenv("REDIS_DB_SESSIONS"), _as_int(os.getenv("REDIS_DB"), 0))
+    REDIS_DB_CONVERSATIONS = _as_int(
+        os.getenv("REDIS_DB_CONVERSATIONS"),
+        _as_int(os.getenv("REDIS_DB_CONTEXT"), 2),
+    )
     REDIS_DB_CONTEXT = _as_int(
         os.getenv("REDIS_DB_CONTEXT"),
         _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"), 2),
     )
+    REDIS_DB_EPHEMERAL = _as_int(os.getenv("REDIS_DB_EPHEMERAL"), 6)
     CHAT_REDIS_DB_CONTEXT = REDIS_DB_CONTEXT
     CHAT_CONTEXT_TTL_SECONDS = _as_int(os.getenv("CHAT_CONTEXT_TTL_SECONDS"), 60 * 60 * 24)
     CHAT_CONTEXT_WINDOW_N = _as_int(os.getenv("CHAT_CONTEXT_WINDOW_N"), 8)

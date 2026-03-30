@@ -14,13 +14,13 @@ _BROKER_URL = os.getenv(
 )
 _RESULT_BACKEND = os.getenv(
     "CELERY_RESULT_BACKEND",
-    f"redis://:{os.getenv('REDIS_PASSWORD', '')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/{os.getenv('REDIS_DB_WORKER', '3')}",
+    f"redis://:{os.getenv('REDIS_PASSWORD', '')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/{os.getenv('REDIS_DB_CELERY_RESULTS', '4')}",
 )
 _ETL_QUEUE = os.getenv("ETL_QUEUE", "etl_queue")
 _REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 _REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 _REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
-_REDIS_DB_WORKER = int(os.getenv("REDIS_DB_WORKER", "3"))
+_REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL", "6"))
 _ETL_INACTIVITY_SECONDS = max(30, int(os.getenv("ETL_INACTIVITY_SECONDS", "900")))
 
 celery_client = Celery("gateway_etl_dispatcher", broker=_BROKER_URL, backend=_RESULT_BACKEND or None)
@@ -31,7 +31,7 @@ def _redis_client():
         host=_REDIS_HOST,
         port=_REDIS_PORT,
         password=_REDIS_PASSWORD,
-        db=_REDIS_DB_WORKER,
+        db=_REDIS_DB_EPHEMERAL,
         decode_responses=True,
         socket_connect_timeout=1,
         socket_timeout=1,

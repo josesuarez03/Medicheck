@@ -10,6 +10,7 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
 REDIS_DB_CONTEXT = int(os.getenv("REDIS_DB_CONTEXT", "2"))
+REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL", "6"))
 WS_AUTH_TTL_SECONDS = int(os.getenv("WS_AUTH_TTL_SECONDS", "3600"))
 WS_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("WS_RATE_LIMIT_WINDOW_SECONDS", "60"))
 WS_RATE_LIMIT_MAX_MESSAGES = int(os.getenv("WS_RATE_LIMIT_MAX_MESSAGES", "20"))
@@ -25,6 +26,15 @@ class WebSocketSessionStore:
             port=REDIS_PORT,
             password=REDIS_PASSWORD,
             db=REDIS_DB_CONTEXT,
+            decode_responses=True,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        self._ephemeral_redis = redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            password=REDIS_PASSWORD,
+            db=REDIS_DB_EPHEMERAL,
             decode_responses=True,
             socket_connect_timeout=1,
             socket_timeout=1,
@@ -113,9 +123,9 @@ class WebSocketSessionStore:
     def check_rate_limit(self, *, identity: str) -> bool:
         key = self._rate_key(identity)
         try:
-            current = self._redis.incr(key)
+            current = self._ephemeral_redis.incr(key)
             if current == 1:
-                self._redis.expire(key, WS_RATE_LIMIT_WINDOW_SECONDS)
+                self._ephemeral_redis.expire(key, WS_RATE_LIMIT_WINDOW_SECONDS)
             return int(current) <= WS_RATE_LIMIT_MAX_MESSAGES
         except Exception:
             count, bucket = _MEMORY_COUNTERS.get(key, (0, int(time.time() // WS_RATE_LIMIT_WINDOW_SECONDS)))

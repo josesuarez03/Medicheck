@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL", "6"))
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("GATEWAY_RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_MAX_REQUESTS = int(os.getenv("GATEWAY_RATE_LIMIT_MAX_REQUESTS", "30"))
 
@@ -17,6 +18,7 @@ def _redis_client():
         host=REDIS_HOST,
         port=REDIS_PORT,
         password=REDIS_PASSWORD,
+        db=REDIS_DB_EPHEMERAL,
         decode_responses=True,
         socket_connect_timeout=1,
         socket_timeout=1,

@@ -7,6 +7,7 @@ from django.http import Http404
 from django.core.exceptions import PermissionDenied
 from django.core import signing
 from django.core.signing import BadSignature, SignatureExpired
+from django.db.models import Count, Prefetch
 import hmac
 import hashlib
 import json
@@ -20,7 +21,6 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from social_django.utils import load_strategy, load_backend
 from social_core.exceptions import MissingBackend, AuthTokenError, AuthForbidden
 
@@ -532,16 +532,31 @@ class PatientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination  # Añadir paginación
     
+    def _base_queryset(self):
+        active_doctor_relations = DoctorPatientRelation.objects.filter(active=True).select_related("doctor__user")
+        return (
+            Patient.objects.select_related("user", "data_validated_by__user")
+            .annotate(history_count=Count("history_entries", distinct=True))
+            .prefetch_related(
+                Prefetch(
+                    "doctor_relations",
+                    queryset=active_doctor_relations,
+                    to_attr="prefetched_active_doctor_relations",
+                )
+            )
+        )
+
     def get_queryset(self):
         user = self.request.user
+        queryset = self._base_queryset()
         # Los pacientes solo pueden ver su propio perfil
         if user.tipo == 'patient':
-            return Patient.objects.filter(user=user)
+            return queryset.filter(user=user)
         # Doctores solo pueden ver sus pacientes asignados
         elif user.tipo == 'doctor':
             try:
                 doctor = Doctor.objects.get(user=user)
-                return Patient.objects.filter(
+                return queryset.filter(
                     doctor_relations__doctor=doctor,
                     doctor_relations__active=True
                 ).distinct()
@@ -549,7 +564,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                 return Patient.objects.none()
         # Administradores pueden ver todos los pacientes
         elif user.tipo == 'admin':
-            return Patient.objects.all()
+            return queryset
         return Patient.objects.none()
     
     def retrieve(self, request, *args, **kwargs):
@@ -570,7 +585,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Puedes ajustar esto según necesites
         
-        history_entries = patient.history_entries.all().order_by('-created_at')
+        history_entries = patient.history_entries.select_related('created_by', 'patient__user').order_by('-created_at')
         page = paginator.paginate_queryset(history_entries, request)
         
         if page is not None:
@@ -608,7 +623,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             patient = Patient.objects.get(id=patient_id)
             if self._patient_id_from_token():
-                return PatientHistoryEntry.objects.filter(patient=patient).order_by('-created_at')
+                return PatientHistoryEntry.objects.filter(patient=patient).select_related('created_by', 'patient__user').order_by('-created_at')
             
             # Pacientes solo pueden ver su propio historial
             if not getattr(user, "is_authenticated", False):
@@ -629,7 +644,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
                     return PatientHistoryEntry.objects.none()
             
             # Retornar historial ordenado por fecha (más reciente primero)
-            return PatientHistoryEntry.objects.filter(patient=patient).order_by('-created_at')
+            return PatientHistoryEntry.objects.filter(patient=patient).select_related('created_by', 'patient__user').order_by('-created_at')
             
         except Patient.DoesNotExist:
             return PatientHistoryEntry.objects.none()
@@ -823,16 +838,24 @@ class DoctorViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        active_patient_relations = DoctorPatientRelation.objects.filter(active=True).select_related("patient__user")
+        queryset = Doctor.objects.select_related('user').prefetch_related(
+            Prefetch(
+                'patient_relations',
+                queryset=active_patient_relations,
+                to_attr='prefetched_active_patient_relations',
+            )
+        )
         # Los doctores solo pueden ver su propio perfil
         if user.tipo == 'doctor':
-            return Doctor.objects.filter(user=user)
+            return queryset.filter(user=user)
         # Administradores pueden ver todos los doctores
         elif user.tipo == 'admin':
-            return Doctor.objects.all()
+            return queryset
         # Pacientes pueden ver la lista de doctores pero sin detalles sensibles
         elif user.tipo == 'patient' and self.action == 'list':
             # Para pacientes, mostrar solo doctores activos
-            return Doctor.objects.filter(user__is_active=True)
+            return queryset.filter(user__is_active=True)
         return Doctor.objects.none()
     
     def retrieve(self, request, *args, **kwargs):
@@ -1191,28 +1214,25 @@ class LogoutView(APIView):
             refresh_token = request.data.get("refresh")
             
             if not refresh_token:
-
-                try:
-                    # Get all outstanding tokens for this user
-                    tokens = OutstandingToken.objects.filter(user_id=request.user.id)
-                    # Blacklist all tokens
-                    for token in tokens:
-                        BlacklistedToken.objects.get_or_create(token=token)
-                    
-                    return Response(
-                        {"message": "Todas las sesiones han sido cerradas correctamente."},
-                        status=status.HTTP_205_RESET_CONTENT
-                    )
-                except Exception as e:
-                    return Response(
-                        {"error": "No se proporcionó token de refresh y no se pudieron invalidar todas las sesiones.", 
-                         "details": str(e)},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                tokens = OutstandingToken.objects.filter(user_id=request.user.id)
+                for token in tokens:
+                    BlacklistedToken.objects.get_or_create(token=token)
+                if getattr(request, "auth", None) is not None:
+                    try:
+                    except TokenError:
+                        pass
+                return Response(
+                    {"message": "Todas las sesiones han sido cerradas correctamente."},
+                    status=status.HTTP_205_RESET_CONTENT
+                )
             
             # If refresh token is provided, blacklist it
             token = RefreshToken(refresh_token)
-            token.blacklist()
+            blacklist_token(token)
+            if getattr(request, "auth", None) is not None:
+                try:
+                except TokenError:
+                    pass
             
             return Response(
                 {"message": "Sesión cerrada correctamente."},
@@ -1228,3 +1248,4 @@ class LogoutView(APIView):
                 {"error": "Error al cerrar sesión.", "details": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
