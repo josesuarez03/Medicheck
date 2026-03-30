@@ -9,6 +9,7 @@ from config.config import Config
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import MessageAnalysis
 from services.medical_facts import FactsSummary, MedicalFact
+from services.vector_store import VectorStore
 
 try:
     from data.connect import context_redis_client, mongo_db
@@ -34,14 +35,8 @@ class ConversationContextService:
         self.context_ttl = Config.CHAT_CONTEXT_TTL_SECONDS
         self.window_n = Config.CHAT_CONTEXT_WINDOW_N
         self.top_k = Config.CHAT_CONTEXT_TOP_K
-        self.embedding_collection = mongo_db["conversation_embeddings"] if mongo_db is not None else None
         self.conversation_collection = mongo_db["conversations"] if mongo_db is not None else None
-        try:
-            if self.embedding_collection is not None:
-                self.embedding_collection.create_index([("user_id", 1), ("conversation_id", 1), ("timestamp", -1)])
-                self.embedding_collection.create_index([("user_id", 1), ("conversation_id", 1), ("source_turn_id", 1)])
-        except Exception as exc:
-            logger.warning("Could not ensure embedding indexes: %s", exc)
+        self.vector_store = VectorStore()
 
     def _ctx_key(self, user_id: str, conversation_id: str) -> str:
         return self.KEY_CTX.format(user_id=user_id, conversation_id=conversation_id)
@@ -143,20 +138,20 @@ class ConversationContextService:
 
         try:
             embedding = generate_embedding(embedding_payload.embedding_text)
-            if self.embedding_collection is not None:
-                self.embedding_collection.insert_one(
-                    {
-                        "user_id": user_id,
-                        "conversation_id": conversation_id,
-                        "source_turn_id": (metadata or {}).get("source_turn_id"),
-                        "text": embedding_payload.embedding_text,
-                        "embedding": embedding,
-                        "timestamp": datetime.utcnow(),
-                        "metadata": metadata or {},
-                        "facts_summary": facts_summary.model_dump(),
-                        "signal_score": analysis.clinical_signal_score,
-                    }
-                )
+            self.vector_store.insert_conversation_embedding(
+                user_id=user_id,
+                patient_id=(metadata or {}).get("patient_id"),
+                conversation_id=conversation_id,
+                source_turn_id=(metadata or {}).get("source_turn_id"),
+                embedding_model=Config.BEDROCK_EMBEDDING_MODEL_ID or "deterministic_fallback",
+                embedding=embedding,
+                embedding_text=embedding_payload.embedding_text,
+                facts_summary=facts_summary.model_dump(),
+                signal_score=analysis.clinical_signal_score,
+                triage_level=(metadata or {}).get("triage_level"),
+                clinical_topic=(metadata or {}).get("clinical_topic"),
+                episode_timestamp=datetime.utcnow(),
+            )
         except Exception as exc:
             logger.warning("Error generating/storing embeddings: %s", exc)
 
@@ -178,65 +173,28 @@ class ConversationContextService:
         return results
 
     def get_semantic_context(self, user_id: str, conversation_id: str, query_text: str, k: int | None = None) -> list[dict[str, Any]]:
-        if self.embedding_collection is None:
-            return []
         query_embedding = generate_embedding(query_text)
         if not query_embedding:
             return []
-        k = k or self.top_k
-        docs = list(
-            self.embedding_collection.find(
-                {"user_id": user_id, "conversation_id": conversation_id, "signal_score": {"$gte": 0.25}},
-                {"text": 1, "embedding": 1, "metadata": 1, "source_turn_id": 1, "timestamp": 1, "facts_summary": 1},
-            ).sort("timestamp", -1).limit(100)
+        return self.vector_store.search_conversation_embeddings(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            query_embedding=query_embedding,
+            limit=k or self.top_k,
+            min_signal_score=0.25,
         )
-        scored = []
-        for doc in docs:
-            score = self._cosine(query_embedding, doc.get("embedding", []))
-            if score > 0:
-                scored.append(
-                    {
-                        "score": score,
-                        "text": doc.get("text", ""),
-                        "metadata": doc.get("metadata", {}),
-                        "source_turn_id": doc.get("source_turn_id"),
-                        "facts_summary": doc.get("facts_summary", {}),
-                    }
-                )
-        scored.sort(key=lambda item: item["score"], reverse=True)
-        return scored[:k]
 
     def get_global_semantic_context(self, user_id: str, query_text: str, current_conversation_id: str | None = None, k: int | None = None) -> list[dict[str, Any]]:
-        if self.embedding_collection is None:
-            return []
         query_embedding = generate_embedding(query_text)
         if not query_embedding:
             return []
-        query = {"user_id": user_id, "signal_score": {"$gte": 0.25}}
-        if current_conversation_id:
-            query["conversation_id"] = {"$ne": current_conversation_id}
-        docs = list(
-            self.embedding_collection.find(
-                query,
-                {"text": 1, "embedding": 1, "metadata": 1, "source_turn_id": 1, "timestamp": 1, "conversation_id": 1, "facts_summary": 1},
-            ).sort("timestamp", -1).limit(200)
+        return self.vector_store.search_global_conversation_embeddings(
+            user_id=user_id,
+            query_embedding=query_embedding,
+            current_conversation_id=current_conversation_id,
+            limit=k or self.top_k,
+            min_signal_score=0.25,
         )
-        scored = []
-        for doc in docs:
-            score = self._cosine(query_embedding, doc.get("embedding", []))
-            if score > 0:
-                scored.append(
-                    {
-                        "score": score,
-                        "text": doc.get("text", ""),
-                        "metadata": doc.get("metadata", {}),
-                        "source_turn_id": doc.get("source_turn_id"),
-                        "conversation_id": doc.get("conversation_id"),
-                        "facts_summary": doc.get("facts_summary", {}),
-                    }
-                )
-        scored.sort(key=lambda item: item["score"], reverse=True)
-        return scored[:k or self.top_k]
 
     def get_global_patient_context_mongo(self, user_id: str, current_conversation_id: str | None = None, max_conversations: int = 5) -> dict[str, Any]:
         if self.conversation_collection is None:
@@ -300,6 +258,7 @@ class ConversationContextService:
         query_text = self._compact_summary_text(current_facts_summary)
         return {
             "conversation_summary": self.get_summary(user_id, conversation_id),
+            "patient_clinical_summary": self.vector_store.get_user_summary_context(user_id=user_id) or {},
             "semantic_context": self.get_semantic_context(user_id, conversation_id, query_text, self.top_k),
             "global_semantic_context": self.get_global_semantic_context(user_id, query_text, current_conversation_id=conversation_id, k=min(2, self.top_k)),
             "global_mongo_context": self.get_global_patient_context_mongo(user_id, current_conversation_id=conversation_id),
@@ -324,6 +283,7 @@ class ConversationContextService:
             **(current_context or {}),
             "user_input": user_input,
             "conversation_summary": retrieval.get("conversation_summary", ""),
+            "patient_clinical_summary": retrieval.get("patient_clinical_summary", {}),
             "recent_turns": recent_turns[-2:],
             "semantic_context": retrieval.get("semantic_context", []),
             "global_semantic_context": retrieval.get("global_semantic_context", []),
