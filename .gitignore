@@ -531,8 +531,3 @@ skills-lock.json
 /docs/images
 /docs/architecture
 /docs/academic
-/backend/ai-service
-/backend/worker
-/backend/gateway
-/backend/expert-service
-modularization_scaffold.md

@@ -1,0 +1,7 @@
+boto3
+cryptography
+pika
+pymongo
+python-dotenv
+redis
+requests

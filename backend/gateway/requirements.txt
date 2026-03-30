@@ -1,0 +1,7 @@
+fastapi
+httpx
+python-jose[cryptography]
+redis[hiredis]
+slowapi
+uvicorn[standard]
+websockets

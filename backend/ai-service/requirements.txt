@@ -1,0 +1,7 @@
+boto3
+cryptography
+fastapi
+numpy
+pymongo
+redis[hiredis]
+uvicorn[standard]
