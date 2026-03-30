@@ -10,6 +10,7 @@ from .views import (
     DoctorViewSet, PatientMeView, 
     PatientMeHistoryView, DoctorPatientRelationViewSet, PatientMedicalDataUpdateView, LoginView, LogoutView,
     PatientHistoryAccessTokenView,
+    PatientClinicalSummaryInternalView,
 )
 
 router = DefaultRouter()
@@ -53,6 +54,7 @@ urlpatterns = [
 
     # Actualización de datos médicos por Flask
     path('api/patients/medical_data_update/', PatientMedicalDataUpdateView.as_view(), name='medical_data_update'),
+    path('api/patients/clinical_summary/', PatientClinicalSummaryInternalView.as_view(), name='patient_clinical_summary_internal'),
     
     # ViewSets
     path('', include(router.urls)),

@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 
-from .models import Patient, PatientHistoryEntry, User
+from .models import Patient, PatientClinicalSummary, PatientHistoryEntry, User
 from .serializers import ChatbotAnalysisSerializer
 from .utils.audit import create_audit_entry, verify_audit_entry
 from common.security.encrypted_fields import ENCRYPTED_VALUE_PREFIX
@@ -93,6 +93,9 @@ class SecurityViewsTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.patient.refresh_from_db()
+        summary = PatientClinicalSummary.objects.get(patient=self.patient)
+        self.assertEqual(summary.summary.get("triaje_level"), "Moderado")
 
     def test_medical_data_update_rejects_tampered_signature(self):
         payload = {
@@ -195,3 +198,35 @@ class SecurityViewsTests(TestCase):
 
         self.assertTrue(raw_db_value.startswith(ENCRYPTED_VALUE_PREFIX))
         self.assertNotIn("Texto clinico sensible", raw_db_value)
+
+    def test_clinical_summary_internal_endpoint_returns_context(self):
+        summary = PatientClinicalSummary.objects.create(
+            patient=self.patient,
+            known_allergies="penicilina",
+            current_medications="ibuprofeno",
+        )
+        request_timestamp, signature = _sign_payload({"user_id": str(self.user.id)})
+
+        response = self.client.get(
+            "/api/patients/clinical_summary/",
+            {"user_id": str(self.user.id)},
+            HTTP_X_REQUEST_TIMESTAMP=request_timestamp,
+            HTTP_X_REQUEST_SIGNATURE=signature,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["patient"], str(self.patient.id))
+        self.assertIn("summary_text", response.json())
+
+    def test_clinical_summary_build_summary_text_excludes_identity_fields(self):
+        summary = PatientClinicalSummary.objects.create(
+            patient=self.patient,
+            chief_complaint_current="dolor torácico",
+            known_allergies="penicilina",
+            current_medications="salbutamol",
+        )
+        summary_text = summary.build_summary_text()
+
+        self.assertIn("dolor torácico", summary_text)
+        self.assertNotIn(self.user.email, summary_text)
+        self.assertNotIn(self.user.first_name, summary_text)

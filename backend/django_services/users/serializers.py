@@ -288,6 +288,7 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
 
 class PatientClinicalSummarySerializer(serializers.ModelSerializer):
     validated_by_name = serializers.SerializerMethodField(read_only=True)
+    summary_text = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = PatientClinicalSummary
@@ -306,11 +307,13 @@ class PatientClinicalSummarySerializer(serializers.ModelSerializer):
             'active_episode_snapshot',
             'clinical_flags',
             'summary',
+            'summary_text',
             'last_source_update_at',
             'last_embedding_refresh_at',
             'is_validated',
             'validated_by',
             'validated_by_name',
+            'summary_text',
             'validated_at',
             'created_at',
             'updated_at',
@@ -331,8 +334,13 @@ class PatientClinicalSummarySerializer(serializers.ModelSerializer):
             return f"Dr. {obj.validated_by.user.first_name} {obj.validated_by.user.last_name}"
         return None
 
+    def get_summary_text(self, obj):
+        return obj.build_summary_text()
+
 
 class PatientClinicalSummaryContextSerializer(serializers.ModelSerializer):
+    summary_text = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = PatientClinicalSummary
         fields = (
@@ -349,7 +357,11 @@ class PatientClinicalSummaryContextSerializer(serializers.ModelSerializer):
             'active_episode_snapshot',
             'clinical_flags',
             'summary',
+            'summary_text',
             'last_source_update_at',
             'is_validated',
         )
         read_only_fields = fields
+
+    def get_summary_text(self, obj):
+        return obj.build_summary_text()

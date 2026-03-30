@@ -36,9 +36,10 @@ from .serializers import (
     PatientSerializer, DoctorSerializer, PatientBasicSerializer, ChatbotAnalysisSerializer,
     PasswordResetRequestSerializer, PasswordResetVerifySerializer,
     ChangePasswordSerializer, AccountDeleteSerializer, PatientHistoryEntrySerializer,
-    DoctorPatientRelationSerializer
+    DoctorPatientRelationSerializer, PatientClinicalSummarySerializer,
+    PatientClinicalSummaryContextSerializer
 )
-from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation
+from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation, PatientClinicalSummary
 from .throttles import LoginRateThrottle, PasswordResetRateThrottle
 from .utils.audit import create_audit_entry
 
@@ -422,6 +423,20 @@ class PatientMedicalDataUpdateView(APIView):
             # Obtener la última entrada de historial creada
             latest_history = patient.history_entries.first()
             patient.refresh_from_db()
+            summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+            summary.sync_from_patient(
+                triage_history=list(
+                    patient.history_entries.exclude(triaje_level__isnull=True).exclude(triaje_level="").values_list("triaje_level", flat=True)[:5]
+                ),
+                episode_snapshot={
+                    "updated_from": source,
+                    "facts_summary": serializer.validated_data.get("facts_summary", {}),
+                    "medical_context": serializer.validated_data.get("medical_context"),
+                    "pain_scale": serializer.validated_data.get("pain_scale"),
+                    "triaje_level": serializer.validated_data.get("triaje_level"),
+                },
+                clinical_flags={"source": source, "internal_request": internal_request},
+            )
             after_snapshot = patient.clinical_snapshot()
             create_audit_entry(
                 actor_user=authenticated_user,
@@ -440,6 +455,7 @@ class PatientMedicalDataUpdateView(APIView):
             return Response({
                 "message": "Información del paciente actualizada correctamente",
                 "patient": PatientSerializer(patient).data,
+                "clinical_summary": PatientClinicalSummaryContextSerializer(summary).data,
                 "profile_complete": user.is_profile_completed,
                 "history_entry": PatientHistoryEntrySerializer(latest_history).data if latest_history else None
             }, status=status.HTTP_200_OK)
@@ -447,6 +463,64 @@ class PatientMedicalDataUpdateView(APIView):
             return Response({
                 "message": "No se realizaron cambios en la información del paciente"
             }, status=status.HTTP_200_OK)
+
+
+class PatientClinicalSummaryInternalView(APIView):
+    permission_classes = [AllowAny]
+
+    def _canonical_payload(self, payload):
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _is_valid_internal_request(self, request):
+        request_timestamp = request.headers.get("X-Request-Timestamp", "")
+        request_signature = request.headers.get("X-Request-Signature", "")
+        shared_secret = getattr(settings, "FLASK_API_KEY", "") or ""
+        if not request_timestamp or not request_signature or not shared_secret:
+            return False
+        try:
+            skew = abs(int(time.time()) - int(request_timestamp))
+        except (TypeError, ValueError):
+            return False
+        if skew > 30:
+            return False
+        canonical_payload = self._canonical_payload(request.data if request.method != "GET" else request.query_params.dict())
+        expected_signature = hmac.new(
+            shared_secret.encode("utf-8"),
+            f"{request_timestamp}:{canonical_payload}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected_signature, request_signature)
+
+    def _resolve_patient(self, request):
+        user_id = request.query_params.get("user_id") or request.data.get("user_id")
+        patient_id = request.query_params.get("patient_id") or request.data.get("patient_id")
+        if patient_id:
+            return get_object_or_404(Patient, id=patient_id)
+        if user_id:
+            return get_object_or_404(Patient, user_id=user_id)
+        raise Http404("Se requiere user_id o patient_id.")
+
+    def get(self, request):
+        if not self._is_valid_internal_request(request):
+            raise PermissionDenied("Se requiere autenticación interna válida.")
+        patient = self._resolve_patient(request)
+        summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+        return Response(PatientClinicalSummaryContextSerializer(summary).data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if not self._is_valid_internal_request(request):
+            raise PermissionDenied("Se requiere autenticación interna válida.")
+        patient = self._resolve_patient(request)
+        summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+        triage_history = request.data.get("recent_triage_history")
+        episode_snapshot = request.data.get("active_episode_snapshot")
+        clinical_flags = request.data.get("clinical_flags")
+        summary.sync_from_patient(
+            triage_history=triage_history,
+            episode_snapshot=episode_snapshot,
+            clinical_flags=clinical_flags,
+        )
+        return Response(PatientClinicalSummarySerializer(summary).data, status=status.HTTP_200_OK)
 
 class PatientViewSet(viewsets.ModelViewSet):
     """ViewSet para administrar pacientes (doctor y admin)"""
