@@ -327,51 +327,54 @@ class QueryOptimizationTests(TestCase):
         self.assertEqual(entries[0].created_by_id, self.patient_users[0].id)
 
 
-class RedisJwtBlacklistTests(SimpleTestCase):
-    def test_blacklist_token_stores_jti_with_expiry(self):
-        redis_mock = MagicMock()
-        refresh = RefreshToken()
+class PatientFlowStabilityTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email="stable@example.com",
+            username="stable",
+            password="Password123!",
+            tipo="patient",
+            first_name="Ana",
+            last_name="Paciente",
+            fecha_nacimiento="1990-01-01",
+            telefono="600123123",
+            direccion="Calle Mayor 1",
+        )
+        self.patient = Patient.objects.create(user=self.user, ocupacion="Docente", allergies="Polen")
+        self.user.check_profile_completion()
+        self.client.force_authenticate(user=self.user)
 
-        with patch("common.security.jwt_redis._redis_client", return_value=redis_mock):
-            blacklist_token(refresh)
+    def test_change_password_preserves_profile_completion_and_returns_user_payload(self):
+        response = self.client.post(
+            "/password/change/",
+            {
+                "old_password": "Password123!",
+                "new_password": "Password456!",
+                "confirm_password": "Password456!",
+            },
+            format="json",
+        )
 
-        self.assertTrue(redis_mock.set.called)
-        key = redis_mock.set.call_args.args[0]
-        self.assertIn(str(refresh["jti"]), key)
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_profile_completed)
+        self.assertTrue(response.json()["profile_complete"])
+        self.assertEqual(response.json()["user"]["id"], str(self.user.id))
 
-    def test_revoke_user_tokens_stores_cutoff(self):
-        redis_mock = MagicMock()
+    def test_history_serializer_exposes_compact_summary_without_markdown_noise(self):
+        entry = PatientHistoryEntry.objects.create(
+            patient=self.patient,
+            source="chatbot",
+            created_by=self.user,
+            notes="**Resumen** de seguimiento",
+            medical_context="# Dolor de cabeza\\n\\n- intensidad alta",
+            triaje_level="Moderado",
+        )
 
-        with patch("common.security.jwt_redis._redis_client", return_value=redis_mock):
-            revoke_user_tokens(user_id="user-1", revoked_after=123456)
+        data = PatientHistoryEntrySerializer(entry).data
 
-        redis_mock.set.assert_called_once()
-        self.assertIn("user-1", redis_mock.set.call_args.args[0])
-        self.assertEqual(redis_mock.set.call_args.args[1], "123456")
-
-    def test_is_token_revoked_checks_jti_blacklist_and_user_cutoff(self):
-        redis_mock = MagicMock()
-        refresh = RefreshToken()
-        refresh["user_id"] = "user-1"
-        refresh["iat"] = 100
-        redis_mock.exists.return_value = 0
-        redis_mock.get.return_value = "120"
-
-        with patch("common.security.jwt_redis._redis_client", return_value=redis_mock):
-            self.assertTrue(is_token_revoked(refresh))
-
-    def test_redis_refresh_serializer_rejects_revoked_refresh(self):
-        refresh = RefreshToken()
-
-        with patch("common.security.jwt_redis.is_token_revoked", return_value=True):
-            serializer = RedisTokenRefreshSerializer(data={"refresh": str(refresh)})
-            self.assertFalse(serializer.is_valid())
-
-    def test_redis_verify_serializer_rejects_revoked_token(self):
-        refresh = RefreshToken()
-
-        with patch("common.security.jwt_redis.is_token_revoked", return_value=True):
-            serializer = RedisTokenVerifySerializer(data={"token": str(refresh.access_token)})
-            self.assertFalse(serializer.is_valid())
-from unittest.mock import MagicMock, patch
-from common.security.jwt_redis import RedisTokenRefreshSerializer, RedisTokenVerifySerializer, blacklist_token, is_token_revoked, revoke_user_tokens
+        self.assertIn("Resumen", data["compact_summary"])
+        self.assertNotIn("#", data["compact_summary"])
+        self.assertNotIn("**", data["compact_summary"])

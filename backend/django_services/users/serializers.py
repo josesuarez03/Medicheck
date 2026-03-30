@@ -2,9 +2,20 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.validators import UniqueValidator
+import re
 from .models import Patient, Doctor, DoctorPatientRelation, PatientHistoryEntry, PatientClinicalSummary
 
 User = get_user_model()
+
+
+def _normalize_compact_summary(*parts):
+    text = " ".join(str(part or "").strip() for part in parts if part)
+    if not text:
+        return "Actualización clínica"
+    text = re.sub(r"`{1,3}([^`]+)`{1,3}", r"\1", text)
+    text = re.sub(r"[*_#>\-\[\]\(\)]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" .,-")
+    return text[:220].strip() or "Actualización clínica"
 
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -284,13 +295,14 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
     """Serializador para las entradas del historial médico del paciente"""
     created_by_name = serializers.SerializerMethodField(read_only=True)
     source_display = serializers.SerializerMethodField(read_only=True)
+    compact_summary = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = PatientHistoryEntry
         fields = ('id', 'created_at', 'source', 'source_display', 'created_by', 'created_by_name',
                   'notes', 'triaje_level', 'pain_scale', 'medical_context', 'allergies',
-                  'medications', 'medical_history', 'ocupacion')
-        read_only_fields = ('id', 'created_at', 'created_by_name', 'source_display')
+                  'compact_summary', 'medications', 'medical_history', 'ocupacion')
+        read_only_fields = ('id', 'created_at', 'created_by_name', 'source_display', 'compact_summary')
     
     def get_created_by_name(self, obj):
         if obj.created_by:
@@ -301,6 +313,9 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
     
     def get_source_display(self, obj):
         return dict(PatientHistoryEntry._meta.get_field('source').choices).get(obj.source)
+
+    def get_compact_summary(self, obj):
+        return _normalize_compact_summary(obj.notes, obj.medical_context)
 
 
 class PatientClinicalSummarySerializer(serializers.ModelSerializer):

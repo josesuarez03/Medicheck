@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Any
 
@@ -69,6 +71,36 @@ class Chatbot:
             if awaiting_closure:
                 closure_result = classify_closure_message(self.user_input, existing_context=self.existing_context)
                 if closure_result.intent == "closure":
+                    if self._should_skip_duplicate_etl(closure_result.facts_summary):
+                        response = "Ya registré este mismo contexto clínico. No vuelvo a lanzar la ETL salvo que añadas información nueva o abras otro episodio."
+                        conversation_state = self._build_conversation_state(
+                            next_intent="etl_skipped_same_context",
+                            awaiting_closure_confirmation=False,
+                            should_trigger_etl=False,
+                            etl_reason="same_context_already_processed",
+                            closure_classifier=closure_result.model_dump(),
+                        )
+                        logger.info(
+                            "etl_skipped_same_context conversation_id=%s user_id=%s",
+                            self.conversation_id,
+                            self.user_id,
+                        )
+                        result = self._build_non_clinical_response(
+                            analyze_message(self.user_input),
+                            response_override=response,
+                            conversation_state_override=conversation_state,
+                        )
+                        self._persist_conversation_turn(
+                            response_text=response,
+                            conversation_state=conversation_state,
+                            facts_summary=closure_result.facts_summary,
+                            analysis=analyze_message(self.user_input),
+                            symptoms=[],
+                            symptoms_pattern={},
+                            pain_scale=0,
+                            triaje_level=self.existing_context.get("last_triaje_level") or "info",
+                        )
+                        return result
                     response = "Perfecto. Cierro esta consulta y preparo el resumen clínico para lanzar la ETL."
                     final_chat_summary = self._build_final_chat_summary(closure_result.facts_summary)
                     conversation_state = self._build_conversation_state(
@@ -381,6 +413,40 @@ class Chatbot:
             return True
         return bool(self.existing_context.get("awaiting_closure_confirmation"))
 
+    def _current_case_signature(self, facts_summary: FactsSummary | None = None) -> str:
+        summary = facts_summary.model_dump() if facts_summary is not None else self.existing_context.get("facts_summary", {})
+        if not isinstance(summary, dict):
+            summary = {}
+        normalized = {
+            "chief_complaints": summary.get("chief_complaints") or [],
+            "symptoms": summary.get("symptoms") or [],
+            "red_flags": summary.get("red_flags") or [],
+            "body_sites": summary.get("body_sites") or [],
+            "history": summary.get("history") or [],
+            "medications": summary.get("medications") or [],
+            "allergies": summary.get("allergies") or [],
+            "duration": summary.get("duration") or "",
+            "pain_scale": summary.get("pain_scale"),
+            "functional_impact": summary.get("functional_impact") or "",
+            "severity_terms": summary.get("severity_terms") or [],
+        }
+        payload = json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _should_skip_duplicate_etl(self, facts_summary: FactsSummary) -> bool:
+        hybrid_state = self.existing_context.get("hybrid_state", {})
+        if not isinstance(hybrid_state, dict):
+            return False
+        etl_state = hybrid_state.get("etl", {})
+        if not isinstance(etl_state, dict):
+            return False
+        if str(etl_state.get("last_status") or "").lower() not in {"queued", "running", "success"}:
+            return False
+        current_state = self.existing_context.get("conversation_state", {})
+        previous_signature = str(current_state.get("current_case_signature") or "") if isinstance(current_state, dict) else ""
+        current_signature = self._current_case_signature(facts_summary)
+        return bool(previous_signature) and previous_signature == current_signature
+
     def _should_offer_closure_confirmation(self, analysis: MessageAnalysis, facts_summary: FactsSummary, triage) -> bool:
         if triage.triage_level == "Severo":
             return False
@@ -420,6 +486,7 @@ class Chatbot:
             "max_questions_per_turn": self.max_questions_per_turn,
             "awaiting_closure_confirmation": awaiting_closure_confirmation,
             "should_trigger_etl": should_trigger_etl,
+            "current_case_signature": self._current_case_signature(),
         }
         if etl_reason:
             state["etl_reason"] = etl_reason

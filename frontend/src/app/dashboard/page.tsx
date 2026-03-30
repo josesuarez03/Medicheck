@@ -30,6 +30,7 @@ type HistoryEntry = {
   notes?: string | null;
   triaje_level?: string | null;
   medical_context?: string | null;
+  compact_summary?: string | null;
 };
 
 type HistoryResponse = {
@@ -73,6 +74,8 @@ const triageClass = (level?: string | null) => {
 };
 
 const entryTitle = (entry: HistoryEntry) => {
+  const compactSummary = entry.compact_summary?.trim();
+  if (compactSummary) return compactSummary;
   const fromNotes = entry.notes?.trim();
   if (fromNotes && !fromNotes.toLowerCase().includes("actualización automática")) return fromNotes;
   const fromContext = entry.medical_context?.trim();
@@ -414,13 +417,13 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {history.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-border/70 p-4 bg-background/80 flex items-center gap-3">
+                  <div key={item.id} className="rounded-xl border border-border/70 p-4 bg-background/80 flex items-start gap-3 overflow-hidden">
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{entryTitle(item)}</p>
-                      <p className="text-sm text-muted-foreground">{relativeTimeEs(item.created_at)}</p>
+                      <p className="font-medium break-words line-clamp-2">{entryTitle(item)}</p>
+                      <p className="text-sm text-muted-foreground break-words">{relativeTimeEs(item.created_at)}</p>
                     </div>
-                    <span className={`text-xs font-semibold rounded-full px-3 py-1 border ${triageClass(item.triaje_level)}`}>
+                    <span className={`text-xs font-semibold rounded-full px-3 py-1 border shrink-0 ${triageClass(item.triaje_level)}`}>
                       {item.triaje_level || "Sin clasificación"}
                     </span>
                   </div>

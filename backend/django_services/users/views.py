@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 
 from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from social_django.utils import load_strategy, load_backend
 from social_core.exceptions import MissingBackend, AuthTokenError, AuthForbidden
 
@@ -43,6 +44,7 @@ from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation,
 from .throttles import LoginRateThrottle, PasswordResetRateThrottle
 from .utils.audit import create_audit_entry
 from .utils.ai_service_sync import push_clinical_summary_to_ai
+from common.security.jwt_redis import blacklist_token
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -1133,6 +1135,14 @@ class ChangePasswordView(APIView):
         # Establecer la nueva contraseña
         user.set_password(serializer.validated_data['new_password'])
         user.save()
+        user.refresh_from_db()
+        profile_complete = user.check_profile_completion()
+        logger.info(
+            "password_change_preserved_profile_status user_id=%s profile_complete=%s tipo=%s",
+            user.id,
+            profile_complete,
+            user.tipo,
+        )
         
         # Generar nuevos tokens para mantener la sesión del usuario
         refresh = RefreshToken.for_user(user)
@@ -1140,7 +1150,9 @@ class ChangePasswordView(APIView):
         return Response({
             "message": "Tu contraseña ha sido cambiada correctamente.",
             "refresh": str(refresh),
-            "access": str(refresh.access_token)
+            "access": str(refresh.access_token),
+            "profile_complete": profile_complete,
+            "user": UserProfileSerializer(user).data,
         }, status=status.HTTP_200_OK)
 
 class AccountDeleteView(APIView):
@@ -1217,10 +1229,6 @@ class LogoutView(APIView):
                 tokens = OutstandingToken.objects.filter(user_id=request.user.id)
                 for token in tokens:
                     BlacklistedToken.objects.get_or_create(token=token)
-                if getattr(request, "auth", None) is not None:
-                    try:
-                    except TokenError:
-                        pass
                 return Response(
                     {"message": "Todas las sesiones han sido cerradas correctamente."},
                     status=status.HTTP_205_RESET_CONTENT
@@ -1229,10 +1237,6 @@ class LogoutView(APIView):
             # If refresh token is provided, blacklist it
             token = RefreshToken(refresh_token)
             blacklist_token(token)
-            if getattr(request, "auth", None) is not None:
-                try:
-                except TokenError:
-                    pass
             
             return Response(
                 {"message": "Sesión cerrada correctamente."},

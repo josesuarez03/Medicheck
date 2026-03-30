@@ -57,7 +57,7 @@
 | 12 | Health check endpoints en Flask y Django | Ambos | ✅ RESUELTO · Fase 1 |
 | 13 | Throttling en endpoints de autenticación Django | Django | ✅ RESUELTO · Fase 1 |
 | 14 | Rectificación de detect_finalization — ETL prematura | Flask | 🟡 IMPORTANTE |
-| 15 | Corrección N+1 queries en PatientSerializer | Django | 🟡 IMPORTANTE |
+| 15 | Corrección N+1 queries en PatientSerializer | Django | ✅ RESUELTO · Fase 3 |
 | 16 | Reducir ACCESS_TOKEN_LIFETIME de JWT a 15 minutos | Django | ✅ RESUELTO · Fase 1 |
 | 17 | Worker Celery (chat) + Worker ETL con RabbitMQ | Nuevo | ✅ RESUELTO · fuera de fase |
 | 18 | Flask como gateway WebSocket ligero | Flask | 🟢 NUEVO |
@@ -86,7 +86,7 @@
 | 41 | Nuevo microservicio expert-service (5002) | expert-service | 🟢 NUEVO |
 | 42 | Modo consulta médica libre con escalado automático a triaje | Gateway + ai-service + expert-service | 🟢 NUEVO |
 | 43 | Corrección ETL → Django: 400 Bad Request por validación rota | Django + Flask | ✅ RESUELTO · Fase 0 |
-| 44 | Estabilización del flujo paciente: perfil, historial y guard ETL | Django + Flask + Frontend | 🟡 IMPORTANTE |
+| 44 | Estabilización del flujo paciente: perfil, historial y guard ETL | Django + Flask + Frontend | 🟡 MUY AVANZADO |
 | 45 | Preservación de contexto clínico global en ETL y RAG | Django + ai-service + RAG | 🟡 MUY AVANZADO |
 
 ---

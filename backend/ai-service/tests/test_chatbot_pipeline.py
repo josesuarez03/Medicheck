@@ -32,6 +32,25 @@ class ChatbotPipelineTests(unittest.TestCase):
         self.assertIn("retrieval", result)
         self.assertIn(result["retrieval"]["level"], {"medium", "full"})
 
+    def test_duplicate_closure_does_not_trigger_etl_for_same_context(self):
+        chatbot = Chatbot(
+            "ok gracias",
+            {},
+            existing_context={
+                "awaiting_closure_confirmation": True,
+                "facts_summary": {"chief_complaints": ["dolor de cabeza"], "symptoms": ["dolor de cabeza"]},
+                "conversation_state": {},
+                "hybrid_state": {"etl": {"last_status": "success"}},
+                "last_triaje_level": "Leve",
+            },
+        )
+        chatbot.existing_context["conversation_state"]["current_case_signature"] = chatbot._current_case_signature()
+
+        result = chatbot.initialize_conversation()
+
+        self.assertEqual(result["conversation_state"]["next_intent"], "etl_skipped_same_context")
+        self.assertFalse(result["conversation_state"]["should_trigger_etl"])
+
 
 if __name__ == "__main__":
     unittest.main()
