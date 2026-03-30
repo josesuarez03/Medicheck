@@ -1773,3 +1773,18 @@ Además, el sistema no está componiendo correctamente el contexto que necesita 
 
 
 Mas adelante se podria integrar gRPC para la comunicación entre servicios.
+> Actualización de cierre 2026-03-30
+>
+> Tareas ya terminadas y que deben considerarse cerradas en este plan:
+> - `#14` Confirmación explícita antes de ETL
+> - `#17` Arquitectura de colas RabbitMQ/Celery para ETL/chat
+> - `#19` Endpoint de reintento manual de ETL
+> - `#20` Caché Redis de resultados ETL
+> - `#21` Segmentación Redis por función
+> - `#27` Integración del worker en la arquitectura
+> - `#37` Resumen visible al finalizar en el chat
+>
+> Ajuste de fases derivado de este cierre:
+> - `#14` ya no debe figurar como pendiente en Fase 3
+> - `#37` ya no debe figurar como pendiente en Fase 4
+> - `#19` y `#20` ya no deben figurar como pendientes en backlog post-MVP
