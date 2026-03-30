@@ -218,6 +218,7 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # tu dirección de correo electr
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # tu contraseña de correo electrónico
 
 FLASK_API_KEY = os.getenv('FLASK_API_KEY', os.getenv('DJANGO_SECRET_KEY', ''))
+AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', '').rstrip('/')
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', '')
 AUDIT_SIGNING_KEY = os.getenv('AUDIT_SIGNING_KEY', '')
 

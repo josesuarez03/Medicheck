@@ -10,6 +10,7 @@ from services.embeddings import build_embedding_payload
 from services.input_validate import MessageAnalysis, analyze_message, generate_response
 from services.medical_facts import FactsSummary, MedicalFact
 from services.pain_utils import extract_pain_scale
+from services.retrieval_router import RetrievalRouter
 from services.triaje_classification import TriageClassification
 
 
@@ -79,6 +80,13 @@ class Chatbot:
                 existing_context=self.existing_context,
                 environment=self.context.get("environment", "general"),
             )
+            retrieval_decision = RetrievalRouter.decide(
+                clinical_signal_score=analysis.clinical_signal_score,
+                facts_summary=facts_summary,
+                triage_level=triage.triage_level,
+                analysis_type=analysis.analysis_type,
+                existing_context=self.existing_context,
+            )
             real_facts = [MedicalFact(**fact) if isinstance(fact, dict) else fact for fact in structured_facts]
             embedding_payload = build_embedding_payload(self.user_input, real_facts, analysis, facts_summary)
 
@@ -87,6 +95,7 @@ class Chatbot:
                 facts_summary=facts_summary,
                 triage=triage,
                 questions_selected=questions_selected,
+                retrieval_decision=retrieval_decision,
             )
             prompt_metadata = build_turn_prompt(prompt_context, initial_prompt=self.initial_prompt)
 
@@ -112,6 +121,8 @@ class Chatbot:
                         metadata={
                             "triage_level": triage.triage_level,
                             "prompt_sections_used": prompt_metadata["prompt_sections_used"],
+                            "patient_id": self.postgres_context.get("patient_id"),
+                            "clinical_topic": self._infer_clinical_topic(facts_summary),
                         },
                         facts=real_facts,
                         facts_summary=facts_summary,
@@ -136,6 +147,7 @@ class Chatbot:
                 "triage_confidence": triage.triage_confidence,
                 "prompt_sections_used": prompt_metadata["prompt_sections_used"],
                 "prompt_token_budget": prompt_metadata["prompt_token_budget"],
+                "retrieval": retrieval_decision.model_dump(),
                 "embedding_payload": embedding_payload.model_dump(),
                 "conversation_state": {
                     "missing_fields": [],
@@ -208,7 +220,18 @@ class Chatbot:
                 return value
         return 0
 
-    def _build_minimal_prompt_context(self, *, facts_summary: FactsSummary, triage, questions_selected: list[str]):
+    def _infer_clinical_topic(self, facts_summary: FactsSummary) -> str | None:
+        red_flags = {item.lower() for item in facts_summary.red_flags}
+        symptoms = {item.lower() for item in (facts_summary.chief_complaints + facts_summary.symptoms)}
+        if any("pecho" in item or "disnea" in item for item in red_flags | symptoms):
+            return "cardiology"
+        if any("cabeza" in item or "mareo" in item for item in symptoms):
+            return "neurology"
+        if facts_summary.history:
+            return "chronic_history"
+        return None
+
+    def _build_minimal_prompt_context(self, *, facts_summary: FactsSummary, triage, questions_selected: list[str], retrieval_decision):
         prompt_context = {
             **self.context,
             "user_input": self.user_input,
@@ -216,6 +239,7 @@ class Chatbot:
             "facts_summary": facts_summary.model_dump(),
             "questions_selected": questions_selected[:2],
             "triage_level": triage.triage_level,
+            "retrieval_level": retrieval_decision.level,
         }
         if self.context_service and self.user_id and self.conversation_id:
             prompt_context.update(
@@ -229,6 +253,9 @@ class Chatbot:
                     postgres_context=self.postgres_context,
                     triage_level=triage.triage_level,
                     facts_summary=facts_summary,
+                    retrieval_level=retrieval_decision.level,
+                    episodic_top_k=retrieval_decision.episodic_top_k,
+                    global_top_k=retrieval_decision.global_top_k,
                 )
             )
         return prompt_context

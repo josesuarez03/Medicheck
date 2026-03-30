@@ -21,10 +21,16 @@ class ChatbotPipelineTests(unittest.TestCase):
         self.assertIn("structured_facts", result)
         self.assertTrue(result["facts_summary"]["red_flags"])
         self.assertIn("prompt_sections_used", result)
+        self.assertEqual(result["retrieval"]["level"], "full")
 
     def test_low_signal_after_turn_does_not_embed(self):
         result = Chatbot("ok", {"patient_profile": {"name": "Ana"}}, existing_context={"chief_complaint": "dolor de cabeza"}).initialize_conversation()
         self.assertTrue(result["embedding_payload"]["skipped"])
+
+    def test_clinical_message_returns_retrieval_metadata(self):
+        result = Chatbot("Tengo fiebre y tos desde ayer", {}).initialize_conversation()
+        self.assertIn("retrieval", result)
+        self.assertIn(result["retrieval"]["level"], {"medium", "full"})
 
 
 if __name__ == "__main__":

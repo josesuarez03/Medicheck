@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from config.config import Config
+from services.django_summary_client import DjangoClinicalSummaryClient
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import MessageAnalysis
 from services.medical_facts import FactsSummary, MedicalFact
@@ -37,6 +38,7 @@ class ConversationContextService:
         self.top_k = Config.CHAT_CONTEXT_TOP_K
         self.conversation_collection = mongo_db["conversations"] if mongo_db is not None else None
         self.vector_store = VectorStore()
+        self.summary_client = DjangoClinicalSummaryClient()
 
     def _ctx_key(self, user_id: str, conversation_id: str) -> str:
         return self.KEY_CTX.format(user_id=user_id, conversation_id=conversation_id)
@@ -254,13 +256,51 @@ class ConversationContextService:
             return ""
         return self._redis_text(raw)
 
-    def build_retrieval_context(self, user_id: str, conversation_id: str, current_facts_summary: FactsSummary) -> dict[str, Any]:
+    def refresh_user_summary_embedding(self, *, user_id: str) -> dict[str, Any] | None:
+        summary = self.summary_client.get_clinical_summary(user_id=user_id)
+        if not summary:
+            return None
+        summary_text = summary.get("summary_text", "")
+        if not summary_text:
+            return summary
+        try:
+            embedding = generate_embedding(summary_text)
+            self.vector_store.upsert_user_summary_embedding(
+                user_id=user_id,
+                patient_id=summary.get("patient"),
+                clinical_summary_id=summary.get("id"),
+                embedding_model=Config.BEDROCK_EMBEDDING_MODEL_ID or "deterministic_fallback",
+                embedding=embedding,
+                summary_text=summary_text,
+                clinical_snapshot=summary,
+                summary_version=int(summary.get("summary_version") or 1),
+                source_updated_at=None,
+            )
+        except Exception as exc:
+            logger.warning("Could not refresh user summary embedding: %s", exc)
+        return summary
+
+    def build_retrieval_context(
+        self,
+        user_id: str,
+        conversation_id: str,
+        current_facts_summary: FactsSummary,
+        *,
+        retrieval_level: str = "medium",
+        episodic_top_k: int | None = None,
+        global_top_k: int | None = None,
+    ) -> dict[str, Any]:
         query_text = self._compact_summary_text(current_facts_summary)
+        patient_summary = self.vector_store.get_user_summary_context(user_id=user_id) or {}
+        if not patient_summary and retrieval_level in {"medium", "full"}:
+            patient_summary = self.refresh_user_summary_embedding(user_id=user_id) or {}
+        effective_episodic_top_k = episodic_top_k if episodic_top_k is not None else self.top_k
+        effective_global_top_k = global_top_k if global_top_k is not None else min(2, self.top_k)
         return {
             "conversation_summary": self.get_summary(user_id, conversation_id),
-            "patient_clinical_summary": self.vector_store.get_user_summary_context(user_id=user_id) or {},
-            "semantic_context": self.get_semantic_context(user_id, conversation_id, query_text, self.top_k),
-            "global_semantic_context": self.get_global_semantic_context(user_id, query_text, current_conversation_id=conversation_id, k=min(2, self.top_k)),
+            "patient_clinical_summary": patient_summary,
+            "semantic_context": [] if retrieval_level == "cheap" else self.get_semantic_context(user_id, conversation_id, query_text, effective_episodic_top_k),
+            "global_semantic_context": [] if retrieval_level != "full" else self.get_global_semantic_context(user_id, query_text, current_conversation_id=conversation_id, k=effective_global_top_k),
             "global_mongo_context": self.get_global_patient_context_mongo(user_id, current_conversation_id=conversation_id),
         }
 
@@ -276,8 +316,18 @@ class ConversationContextService:
         postgres_context: dict[str, Any] | None = None,
         triage_level: str | None,
         facts_summary: FactsSummary | None = None,
+        retrieval_level: str = "medium",
+        episodic_top_k: int | None = None,
+        global_top_k: int | None = None,
     ) -> dict[str, Any]:
-        retrieval = self.build_retrieval_context(user_id, conversation_id, facts_summary or FactsSummary())
+        retrieval = self.build_retrieval_context(
+            user_id,
+            conversation_id,
+            facts_summary or FactsSummary(),
+            retrieval_level=retrieval_level,
+            episodic_top_k=episodic_top_k,
+            global_top_k=global_top_k,
+        )
         recent_turns = self.get_recent_window(user_id, conversation_id, 2)
         return {
             **(current_context or {}),
@@ -292,5 +342,6 @@ class ConversationContextService:
             "missing_questions": (missing_questions or [])[:2],
             "questions_selected": (questions_selected or [])[:2],
             "triage_level": triage_level,
+            "retrieval_level": retrieval_level,
             "facts_summary": (facts_summary or FactsSummary()).model_dump(),
         }

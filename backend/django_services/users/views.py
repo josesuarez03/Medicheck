@@ -42,6 +42,7 @@ from .serializers import (
 from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation, PatientClinicalSummary
 from .throttles import LoginRateThrottle, PasswordResetRateThrottle
 from .utils.audit import create_audit_entry
+from .utils.ai_service_sync import push_clinical_summary_to_ai
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -437,6 +438,7 @@ class PatientMedicalDataUpdateView(APIView):
                 },
                 clinical_flags={"source": source, "internal_request": internal_request},
             )
+            push_clinical_summary_to_ai(summary)
             after_snapshot = patient.clinical_snapshot()
             create_audit_entry(
                 actor_user=authenticated_user,
@@ -520,6 +522,7 @@ class PatientClinicalSummaryInternalView(APIView):
             episode_snapshot=episode_snapshot,
             clinical_flags=clinical_flags,
         )
+        push_clinical_summary_to_ai(summary)
         return Response(PatientClinicalSummarySerializer(summary).data, status=status.HTTP_200_OK)
 
 class PatientViewSet(viewsets.ModelViewSet):

@@ -52,6 +52,14 @@ def build_turn_prompt(context_bundle: dict[str, Any], initial_prompt: str | None
     if facts_summary:
         sections.append(("turn_facts", "Hechos clínicos del turno: " + json.dumps(facts_summary, ensure_ascii=False)))
 
+    patient_clinical_summary = context_bundle.get("patient_clinical_summary", {}) or {}
+    if patient_clinical_summary:
+        summary_text = patient_clinical_summary.get("summary_text")
+        if summary_text:
+            sections.append(("patient_clinical_summary", "Resumen clínico del paciente: " + str(summary_text)))
+        else:
+            sections.append(("patient_clinical_summary", "Resumen clínico del paciente: " + json.dumps(patient_clinical_summary, ensure_ascii=False)))
+
     postgres_context = _compact_postgres_context(context_bundle.get("postgres_context", {}) or {})
     if postgres_context:
         sections.append(("patient_profile", "Contexto persistente relevante: " + postgres_context))
@@ -84,7 +92,7 @@ def build_turn_prompt(context_bundle: dict[str, Any], initial_prompt: str | None
     if questions_selected:
         sections.append(("questions", "Preguntas pendientes: " + " | ".join(questions_selected)))
 
-    section_priority = ["global_memory", "retrieved_memory", "recent_turns", "questions"]
+    section_priority = ["global_memory", "retrieved_memory", "recent_turns", "questions", "patient_profile"]
     while True:
         prompt_text = "\n\n".join(section_text for _, section_text in sections if section_text.strip())
         used_estimate = estimate_tokens(prompt_text)

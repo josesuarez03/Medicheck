@@ -1,15 +1,20 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
+import hmac
+import hashlib
+import json
 
 from services.bedrock_claude import build_turn_prompt, call_claude
 from services.chatbot import Chatbot
 from services.comprehend_medical import detect_entities
+from services.conversation_context_service import ConversationContextService
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import analyze_message
 from services.medical_facts import FactsSummary, MedicalFact
+from config.config import Config
 
 
 router = APIRouter(prefix="/inference", tags=["inference"])
@@ -21,6 +26,28 @@ class InferenceRequest(BaseModel):
     user_data: dict[str, Any] = Field(default_factory=dict)
     user_id: str | None = None
     conversation_id: str | None = None
+
+
+class UserSummaryUpsertRequest(BaseModel):
+    user_id: str
+    patient_id: str
+    clinical_summary_id: str
+    summary_version: int
+    summary_text: str
+    clinical_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+def _is_valid_internal_request(payload: dict[str, Any], request_timestamp: str | None, request_signature: str | None) -> bool:
+    shared_secret = Config.FLASK_API_KEY or ""
+    if not request_timestamp or not request_signature or not shared_secret:
+        return False
+    canonical_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    expected_signature = hmac.new(
+        shared_secret.encode("utf-8"),
+        f"{request_timestamp}:{canonical_payload}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected_signature, request_signature)
 
 
 @router.get("/health")
@@ -109,3 +136,33 @@ async def infer_consult(payload: InferenceRequest) -> dict[str, Any]:
         "prompt_sections_used": prompt_meta["prompt_sections_used"],
         "prompt_token_budget": prompt_meta["prompt_token_budget"],
     }
+
+
+@router.post("/internal/user-summary/upsert")
+async def upsert_user_summary_embedding(
+    payload: UserSummaryUpsertRequest,
+    x_request_timestamp: str | None = Header(default=None),
+    x_request_signature: str | None = Header(default=None),
+) -> dict[str, Any]:
+    body = payload.model_dump()
+    if not _is_valid_internal_request(body, x_request_timestamp, x_request_signature):
+        return {"status": "error", "service": "ai-service", "reason": "invalid_internal_signature"}
+
+    summary_text = payload.summary_text.strip()
+    if not summary_text:
+        return {"status": "ok", "service": "ai-service", "skipped": True, "reason": "empty_summary_text"}
+
+    context_service = ConversationContextService()
+    embedding = generate_embedding(summary_text)
+    context_service.vector_store.upsert_user_summary_embedding(
+        user_id=payload.user_id,
+        patient_id=payload.patient_id,
+        clinical_summary_id=payload.clinical_summary_id,
+        embedding_model=Config.BEDROCK_EMBEDDING_MODEL_ID or "deterministic_fallback",
+        embedding=embedding,
+        summary_text=summary_text,
+        clinical_snapshot=payload.clinical_snapshot,
+        summary_version=payload.summary_version,
+        source_updated_at=datetime.now(timezone.utc),
+    )
+    return {"status": "ok", "service": "ai-service", "skipped": False}

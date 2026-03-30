@@ -484,6 +484,7 @@ class PatientClinicalSummary(models.Model):
             'medical_history_known': self.medical_history_known,
             'risk_factors': self.risk_factors,
             'occupation_context': self.occupation_context,
+            'gender': getattr(self.patient.user, 'genero', None),
             'baseline_pain_context': self.baseline_pain_context,
             'recent_triage_history': self.recent_triage_history or [],
             'active_episode_snapshot': self.active_episode_snapshot or {},
@@ -511,6 +512,8 @@ class PatientClinicalSummary(models.Model):
             fragments.append(f"factores_riesgo: {payload['risk_factors']}")
         if payload.get('occupation_context'):
             fragments.append(f"ocupacion: {payload['occupation_context']}")
+        if payload.get('gender'):
+            fragments.append(f"sexo: {payload['gender']}")
         if payload.get('baseline_pain_context'):
             fragments.append(f"dolor_reportado: {payload['baseline_pain_context']}")
         triage_history = payload.get('recent_triage_history') or []
