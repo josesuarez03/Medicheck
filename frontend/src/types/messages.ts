@@ -27,14 +27,20 @@ export interface DecisionFlags {
 }
 
 export interface ChatResponsePayload {
+  event?: string;
+  status?: string;
   user_message?: string;
   ai_response?: string;
   response?: string;
   timestamp?: string;
   error?: string;
   error_code?: string;
+  detail?: string;
+  message?: string;
+  seconds_left?: number;
   conversation_id?: string;
   triaje_level?: string;
+  response_source?: string;
   final_chat_summary?: string;
   final_chat_summary_title?: string;
   conversation_state?: ConversationState;

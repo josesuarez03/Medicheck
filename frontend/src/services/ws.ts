@@ -1,96 +1,98 @@
-import { io, Socket } from "socket.io-client";
 import type { ChatResponsePayload } from "@/types/messages";
 import { getAccessToken, refreshAccessToken } from "@/services/authTokens";
 
+const buildWebSocketUrl = (rawUrl: string): string => {
+  if (!rawUrl) return "";
+  if (rawUrl.startsWith("ws://") || rawUrl.startsWith("wss://")) {
+    return rawUrl.endsWith("/ws") ? rawUrl : `${rawUrl.replace(/\/$/, "")}/ws`;
+  }
+  const normalized = rawUrl.replace(/\/$/, "");
+  if (normalized.startsWith("http://")) {
+    return `${normalized.replace(/^http:\/\//, "ws://")}/ws`;
+  }
+  if (normalized.startsWith("https://")) {
+    return `${normalized.replace(/^https:\/\//, "wss://")}/ws`;
+  }
+  return `ws://${normalized}/ws`;
+};
+
 class SocketIOService {
-  private socket: Socket | null = null;
+  private socket: WebSocket | null = null;
   private listeners: ((payload: ChatResponsePayload) => void)[] = [];
   private errorListeners: ((message: string) => void)[] = [];
   private url: string;
   private authenticated = false;
 
   constructor(url: string) {
-    this.url = url;
+    this.url = buildWebSocketUrl(url);
   }
 
   async connect(): Promise<void> {
-    if (this.socket && this.socket.connected) return;
+    if (!this.url) {
+      throw new Error("URL de websocket no configurada");
+    }
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
 
     const token = getAccessToken();
+    await new Promise<void>((resolve, reject) => {
+      this.socket = new WebSocket(this.url);
 
-    this.socket = io(this.url, {
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: 8,
-      reconnectionDelay: 1200,
-      timeout: 20000,
-      autoConnect: true,
-      forceNew: false,
-    });
+      this.socket.onopen = () => {
+        this.authenticated = false;
+        if (token) {
+          this.sendRaw({ type: "authenticate", token });
+        }
+        resolve();
+      };
 
-    this.socket.on("connect", () => {
-      this.authenticated = false;
-      if (token) {
-        this.socket?.emit("authenticate", { token });
-      }
-    });
+      this.socket.onerror = () => {
+        reject(new Error("Error de conexión con el websocket"));
+      };
 
-    this.socket.on("reconnect", () => {
-      this.authenticated = false;
-      const currentToken = getAccessToken();
-      if (currentToken) {
-        this.socket?.emit("authenticate", { token: currentToken });
-      }
-    });
+      this.socket.onmessage = async (event: MessageEvent<string>) => {
+        await this.handleIncomingMessage(event.data);
+      };
 
-    this.socket.on("authenticated", () => {
-      this.authenticated = true;
-    });
-
-    this.socket.on("chat_response", (data: unknown) => {
-      this.handleIncomingMessage(data);
-    });
-
-    this.socket.on("error", (data: unknown) => {
-      this.handleIncomingError(data);
-    });
-
-    this.socket.on("connect_error", (error: Error) => {
-      this.handleIncomingError(error?.message || "Error de conexión con el socket");
-    });
-
-    this.socket.on("connection_error", (data: unknown) => {
-      this.handleIncomingError(data);
-    });
-
-    this.socket.on("auth_required", async (data: unknown) => {
-      this.authenticated = false;
-      const refreshedToken = await refreshAccessToken();
-      if (refreshedToken) {
-        this.socket?.emit("authenticate", { token: refreshedToken });
-        return;
-      }
-      this.handleIncomingError(data);
+      this.socket.onclose = () => {
+        this.authenticated = false;
+      };
     });
   }
 
-  private handleIncomingMessage(data: unknown): void {
-    let payload: ChatResponsePayload;
+  private sendRaw(payload: Record<string, unknown>): void {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify(payload));
+  }
 
-    if (typeof data === "string") {
-      payload = { ai_response: data };
-    } else if (data && typeof data === "object") {
-      payload = data as ChatResponsePayload;
-    } else {
-      payload = { ai_response: String(data) };
+  private async handleIncomingMessage(data: string): Promise<void> {
+    let payload: ChatResponsePayload;
+    try {
+      payload = JSON.parse(data) as ChatResponsePayload;
+    } catch {
+      payload = { response: data };
     }
 
-    const text =
-      payload.ai_response ||
-      payload.response ||
-      (typeof payload.message === "string" ? payload.message : "");
+    if (payload.event === "connection_success" || payload.status === "authenticated") {
+      this.authenticated = true;
+      return;
+    }
 
-    if (!text.trim()) return;
+    if (payload.event === "auth_required") {
+      this.authenticated = false;
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        this.sendRaw({ type: "authenticate", token: refreshedToken });
+        return;
+      }
+      this.handleIncomingError(payload.detail || "Se requiere autenticación.");
+      return;
+    }
+
+    if (payload.event === "auth_error" || payload.event === "auth_timeout" || payload.event === "rate_limit_exceeded") {
+      this.handleIncomingError(payload.detail || payload.message || "Error en comunicación con el asistente");
+      return;
+    }
+
     this.listeners.forEach((listener) => listener(payload));
   }
 
@@ -105,27 +107,21 @@ class SocketIOService {
   }
 
   sendMessage(message: string, additionalData?: Record<string, unknown>): boolean {
-    if (!this.socket?.connected || !this.authenticated) return false;
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.authenticated) return false;
 
-    let messageData: unknown = message;
-    try {
-      messageData = JSON.parse(message);
-    } catch {
-      messageData = {
-        message,
-        timestamp: new Date().toISOString(),
-        ...additionalData,
-      };
-    }
-
-    this.socket.emit("chat_message", messageData);
+    this.sendRaw({
+      type: "chat",
+      message,
+      timestamp: new Date().toISOString(),
+      ...additionalData,
+    });
     return true;
   }
 
   reauthenticate(): void {
     const token = getAccessToken();
-    if (this.socket?.connected && token) {
-      this.socket.emit("authenticate", { token });
+    if (this.socket?.readyState === WebSocket.OPEN && token) {
+      this.sendRaw({ type: "authenticate", token });
     }
   }
 
@@ -146,21 +142,21 @@ class SocketIOService {
   }
 
   isConnected(): boolean {
-    return this.socket?.connected ?? false;
+    return this.socket?.readyState === WebSocket.OPEN && this.authenticated;
   }
 
   getConnectionState(): "no_socket" | "connected" | "disconnected" | "connecting" {
     if (!this.socket) return "no_socket";
-    if (this.socket.connected) return "connected";
-    if (this.socket.disconnected) return "disconnected";
-    return "connecting";
+    if (this.socket.readyState === WebSocket.CONNECTING) return "connecting";
+    if (this.socket.readyState === WebSocket.OPEN && this.authenticated) return "connected";
+    return "disconnected";
   }
 
   disconnect(): void {
     if (this.socket) {
-      this.socket.removeAllListeners();
-      this.socket.disconnect();
+      this.socket.close();
       this.socket = null;
+      this.authenticated = false;
     }
   }
 }

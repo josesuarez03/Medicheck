@@ -192,6 +192,43 @@ export default function Chatbot() {
     if (lastProcessedSocketIndexRef.current === lastIndex) return;
     lastProcessedSocketIndexRef.current = lastIndex;
     const payload = socketMessages[lastIndex];
+    const eventType = typeof payload.event === 'string' ? payload.event : '';
+
+    if (eventType === 'session_warning') {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createMessageId(),
+          content: typeof payload.message === 'string' && payload.message.trim()
+            ? payload.message
+            : 'Se cerrará en 3 min por inactividad. ¿Algo más que añadir?',
+          sender: 'system',
+          status: 'sent',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
+
+    if (eventType === 'session_timeout') {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createMessageId(),
+          content: typeof payload.message === 'string' && payload.message.trim()
+            ? payload.message
+            : 'La sesión se ha cerrado por inactividad.',
+          sender: 'system',
+          status: 'sent',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      setIsWaitingBot(false);
+      setPendingMessageId(null);
+      setChatError('La sesión se cerró por inactividad. Inicia una nueva conversación para continuar.');
+      return;
+    }
+
     const responseText =
       payload.ai_response ||
       payload.response ||
@@ -439,13 +476,11 @@ export default function Chatbot() {
     setChatError(null);
 
     const messagePayload = {
-      message: trimmed,
-      timestamp: new Date().toISOString(),
       context: {},
       conversation_id: activeConversationId,
     };
 
-    const success = sendMessage(JSON.stringify(messagePayload));
+    const success = sendMessage(trimmed, messagePayload);
     if (!success) {
       setMessages((prev) =>
         prev.map((message) => (message.id === userMessageId ? { ...message, status: 'error' } : message))
