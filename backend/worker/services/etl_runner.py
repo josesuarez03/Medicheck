@@ -46,6 +46,39 @@ def _etl_lock_key(user_id: str, conversation_id: str) -> str:
     return f"worker:etl:lock:{user_id}:{conversation_id}"
 
 
+def _etl_cache_key(user_id: str, conversation_id: str) -> str:
+    return f"worker:etl:cache:{user_id}:{conversation_id}"
+
+
+def _read_cached_etl_result(user_id: str, conversation_id: str) -> Dict[str, Any] | None:
+    try:
+        raw = worker_redis_client.get(_etl_cache_key(user_id, conversation_id))
+        if not raw:
+            return None
+        cached = json.loads(raw)
+        return cached if isinstance(cached, dict) else None
+    except Exception as exc:
+        logger.warning("No se pudo leer caché ETL %s/%s: %s", user_id, conversation_id, str(exc))
+        return None
+
+
+def _write_cached_etl_result(user_id: str, conversation_id: str, medical_data: Dict[str, Any]) -> None:
+    payload = {
+        "medical_data": medical_data,
+        "cached_at": _utc_now_iso(),
+    }
+    worker_redis_client.set(
+        _etl_cache_key(user_id, conversation_id),
+        json.dumps(payload, ensure_ascii=False),
+        ex=Config.ETL_CACHE_TTL_SECONDS,
+    )
+
+
+def _should_reuse_cached_etl(reasons: List[str]) -> bool:
+    reusable_reasons = {"manual_retry", "inactivity_timeout", "closure_confirmed", "retry_after_failure"}
+    return bool(set(reasons or []) & reusable_reasons)
+
+
 def _acquire_etl_lock(user_id: str, conversation_id: str, run_id: str) -> bool:
     return bool(
         worker_redis_client.set(
@@ -131,7 +164,18 @@ def execute_etl_once(
 
     processor = MedicalDataProcessor(user_id=user_id, conversation_id=conversation_id)
     try:
-        medical_data = processor.process_medical_data(user_id, conversation_id)
+        cached = _read_cached_etl_result(user_id, conversation_id) if _should_reuse_cached_etl(resolved_reasons) else None
+        medical_data = cached.get("medical_data") if isinstance(cached, dict) else None
+        if medical_data:
+            _log_etl_event(
+                "etl_cache_hit",
+                user_id=user_id,
+                conversation_id=conversation_id,
+                run_id=resolved_run_id,
+                reasons=resolved_reasons,
+            )
+        else:
+            medical_data = processor.process_medical_data(user_id, conversation_id)
         if not medical_data or "error" in medical_data:
             error_msg = (medical_data or {}).get("error", "No se pudo procesar la conversación.")
             return {
@@ -140,6 +184,8 @@ def execute_etl_once(
                 "medical_data": medical_data,
                 "django_response": None,
             }
+        if not cached:
+            _write_cached_etl_result(user_id, conversation_id, medical_data)
 
         django_response = send_data_to_django(
             user_id,
@@ -153,6 +199,7 @@ def execute_etl_once(
             "error": django_response.get("error") if has_error else "",
             "medical_data": medical_data,
             "django_response": django_response,
+            "cache_used": bool(cached),
         }
     finally:
         _release_etl_lock(user_id, conversation_id, resolved_run_id)

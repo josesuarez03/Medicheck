@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from middleware.auth import get_bearer_token
 from middleware.rate_limit import enforce_rate_limit
+from services.etl_dispatcher import clear_inactivity_token, enqueue_etl_dispatch
 from services.orchestrator import orchestrate_chat
 
 
@@ -14,7 +15,7 @@ router = APIRouter(tags=["http"])
 
 class EtlRetryRequest(BaseModel):
     conversation_id: str
-    user_id: str
+    user_id: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -59,10 +60,22 @@ async def retry_etl(
 ) -> dict[str, str | None]:
     if not bearer_token:
         raise HTTPException(status_code=401, detail="Se requiere autenticación para reintentar ETL.")
+    user_id = (bearer_token or {}).get("user_id") or (bearer_token or {}).get("sub") or payload.user_id
+    if not user_id:
+        raise HTTPException(status_code=400, detail="No se pudo resolver el usuario autenticado.")
+    clear_inactivity_token(user_id=user_id, conversation_id=payload.conversation_id)
+    dispatch = enqueue_etl_dispatch(
+        user_id=user_id,
+        conversation_id=payload.conversation_id,
+        jwt_token=(bearer_token or {}).get("raw_token"),
+        reasons=["manual_retry"],
+    )
     return {
-        "status": "not_implemented",
+        "status": dispatch.get("status", "queued"),
         "service": "gateway",
         "conversation_id": payload.conversation_id,
-        "user_id": payload.user_id,
+        "user_id": user_id,
         "token_present": "yes",
+        "task_id": dispatch.get("task_id"),
+        "run_id": dispatch.get("run_id"),
     }

@@ -93,6 +93,7 @@ class Config:
     CHAT_QUEUE_NAME = os.getenv("CHAT_QUEUE", "chat_queue")
     ETL_DISPATCH_MODE = os.getenv("ETL_DISPATCH_MODE", "celery").strip().lower()
     ETL_LOCK_TTL_SECONDS = max(30, _as_int(os.getenv("ETL_LOCK_TTL_SECONDS"), 300))
+    ETL_CACHE_TTL_SECONDS = max(300, _as_int(os.getenv("ETL_CACHE_TTL_SECONDS"), 60 * 60 * 24))
     AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:5001").rstrip("/")
     AI_SERVICE_CHAT_PATH = os.getenv("AI_SERVICE_CHAT_PATH", "/inference/chat")
 

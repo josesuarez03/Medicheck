@@ -214,6 +214,19 @@ export default function Chatbot() {
       },
     ]);
 
+    if (typeof payload.final_chat_summary === 'string' && payload.final_chat_summary.trim()) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: createMessageId(),
+          content: `${payload.final_chat_summary_title || 'Resumen final'}\n\n${payload.final_chat_summary}`,
+          sender: 'system',
+          status: 'sent',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    }
+
     setQuickReplies(extractSuggestions(payload));
 
     if (payload.triaje_level) {

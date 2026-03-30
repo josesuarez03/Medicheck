@@ -3,6 +3,7 @@ from typing import Any
 import uuid
 
 import asyncio
+from services.etl_dispatcher import clear_inactivity_token, enqueue_etl_dispatch, schedule_inactivity_etl
 
 try:
     import httpx
@@ -63,19 +64,26 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
 
     etl_dispatch = None
     ai_conversation_state = ai_result.get("conversation_state", {}) if isinstance(ai_result, dict) else {}
-    if (
-        isinstance(ai_conversation_state, dict)
-        and ai_conversation_state.get("should_trigger_etl") is True
-        and user_id
-        and conversation_id
-    ):
-        etl_dispatch = enqueue_etl_dispatch(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            jwt_token=jwt_token,
-            reasons=[str(ai_conversation_state.get("etl_reason") or "closure_confirmed")],
-        )
-        ai_conversation_state["etl_dispatch"] = etl_dispatch
+    if isinstance(ai_conversation_state, dict) and user_id and conversation_id:
+        if ai_conversation_state.get("should_trigger_etl") is True:
+            clear_inactivity_token(user_id=user_id, conversation_id=conversation_id)
+            etl_dispatch = enqueue_etl_dispatch(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                jwt_token=jwt_token,
+                reasons=[str(ai_conversation_state.get("etl_reason") or "closure_confirmed")],
+            )
+            ai_conversation_state["etl_dispatch"] = etl_dispatch
+        elif ai_conversation_state.get("awaiting_closure_confirmation") is True:
+            etl_dispatch = schedule_inactivity_etl(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                jwt_token=jwt_token,
+                reasons=["inactivity_timeout"],
+            )
+            ai_conversation_state["etl_dispatch"] = etl_dispatch
+        else:
+            clear_inactivity_token(user_id=user_id, conversation_id=conversation_id)
 
     return {
         "status": "ok",
@@ -83,10 +91,11 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
         "conversation_id": conversation_id,
         "response_source": "ai",
         "response": ai_result.get("response", ""),
+        "final_chat_summary": ai_result.get("final_chat_summary"),
+        "final_chat_summary_title": ai_result.get("final_chat_summary_title"),
         "triaje_level": ai_result.get("triaje_level") or expert_result.get("triage_level", "Leve"),
         "expert": expert_result,
         "ai": ai_result,
         "conversation_state": ai_conversation_state,
         "etl_dispatch": etl_dispatch,
     }
-from services.etl_dispatcher import enqueue_etl_dispatch

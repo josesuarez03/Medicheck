@@ -35,6 +35,8 @@ export interface ChatResponsePayload {
   error_code?: string;
   conversation_id?: string;
   triaje_level?: string;
+  final_chat_summary?: string;
+  final_chat_summary_title?: string;
   conversation_state?: ConversationState;
   decision_flags?: DecisionFlags;
   [key: string]: unknown;

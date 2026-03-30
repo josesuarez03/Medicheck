@@ -43,6 +43,9 @@ from services import etl_runner
 
 
 class EtlRunnerTests(unittest.TestCase):
+    def setUp(self):
+        etl_runner.worker_redis_client.reset_mock()
+
     def test_enqueue_etl_run_uses_celery_when_enabled(self):
         with patch.object(etl_runner.Config, "ETL_DISPATCH_MODE", "celery"), patch.object(
             etl_runner, "_update_etl_state"
@@ -114,6 +117,31 @@ class EtlRunnerTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         release_lock.assert_called_once_with("user-1", "conv-1", "run-4")
+
+    def test_execute_etl_once_reuses_cached_medical_data_for_retry(self):
+        etl_runner.worker_redis_client.get.return_value = '{"medical_data": {"triaje_level": "Moderado"}, "cached_at": "2026-03-30T10:00:00"}'
+        processor = MagicMock()
+
+        with patch.object(etl_runner, "_acquire_etl_lock", return_value=True), patch.object(
+            etl_runner, "_release_etl_lock"
+        ), patch.object(
+            etl_runner, "MedicalDataProcessor", return_value=processor
+        ), patch.object(
+            etl_runner, "send_data_to_django", return_value={"status": "ok"}
+        ), patch.object(
+            etl_runner, "_log_etl_event"
+        ):
+            result = etl_runner.execute_etl_once(
+                user_id="user-1",
+                conversation_id="conv-1",
+                jwt_token="jwt",
+                run_id="run-5",
+                reasons=["manual_retry"],
+            )
+
+        processor.process_medical_data.assert_not_called()
+        self.assertTrue(result["success"])
+        self.assertTrue(result["cache_used"])
 
 
 if __name__ == "__main__":

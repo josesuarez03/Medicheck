@@ -70,6 +70,7 @@ class Chatbot:
                 closure_result = classify_closure_message(self.user_input, existing_context=self.existing_context)
                 if closure_result.intent == "closure":
                     response = "Perfecto. Cierro esta consulta y preparo el resumen clínico para lanzar la ETL."
+                    final_chat_summary = self._build_final_chat_summary(closure_result.facts_summary)
                     conversation_state = self._build_conversation_state(
                         next_intent="trigger_etl",
                         awaiting_closure_confirmation=False,
@@ -82,6 +83,8 @@ class Chatbot:
                         response_override=response,
                         conversation_state_override=conversation_state,
                     )
+                    result["final_chat_summary"] = final_chat_summary
+                    result["final_chat_summary_title"] = "Resumen de esta consulta"
                     self._persist_conversation_turn(
                         response_text=response,
                         conversation_state=conversation_state,
@@ -91,6 +94,7 @@ class Chatbot:
                         symptoms_pattern={},
                         pain_scale=0,
                         triaje_level=self.existing_context.get("last_triaje_level") or "info",
+                        final_chat_summary=final_chat_summary,
                     )
                     return result
                 if closure_result.intent == "uncertain":
@@ -434,10 +438,13 @@ class Chatbot:
         symptoms_pattern,
         pain_scale: int,
         triaje_level: str,
+        final_chat_summary: str | None = None,
     ) -> None:
         if not self.dataset_manager or not self.user_id:
             return
         messages = [{"role": "user", "content": self.user_input}, {"role": "assistant", "content": response_text}]
+        if final_chat_summary:
+            messages.append({"role": "assistant", "content": f"Resumen de esta consulta\n\n{final_chat_summary}"})
         medical_context = {
             **(self.existing_context or {}),
             **(self.context or {}),
@@ -447,6 +454,8 @@ class Chatbot:
             "last_analysis_type": analysis.analysis_type,
             "last_triaje_level": triaje_level,
         }
+        if final_chat_summary:
+            medical_context["final_chat_summary"] = final_chat_summary
         try:
             if self.conversation_id:
                 current = self.dataset_manager.get_conversation(self.user_id, self.conversation_id) or {}
@@ -487,3 +496,38 @@ class Chatbot:
                 )
         except Exception as exc:
             logger.warning("Could not persist conversation %s: %s", self.conversation_id, exc)
+
+    def _build_final_chat_summary(self, latest_facts_summary: FactsSummary | None = None) -> str:
+        base_summary = latest_facts_summary or FactsSummary(**((self.existing_context or {}).get("facts_summary", {}) or {}))
+        if not any(
+            [
+                base_summary.chief_complaints,
+                base_summary.symptoms,
+                base_summary.duration,
+                base_summary.red_flags,
+                base_summary.pain_scale is not None,
+                base_summary.medications,
+                base_summary.allergies,
+                base_summary.history,
+            ]
+        ):
+            return "No se detectaron suficientes datos clínicos estructurados para resumir esta consulta."
+
+        fragments: list[str] = []
+        if base_summary.chief_complaints:
+            fragments.append("Motivo principal: " + ", ".join(base_summary.chief_complaints[:2]) + ".")
+        if base_summary.symptoms:
+            fragments.append("Síntomas relevantes: " + ", ".join(base_summary.symptoms[:4]) + ".")
+        if base_summary.duration:
+            fragments.append("Duración referida: " + base_summary.duration + ".")
+        if base_summary.pain_scale is not None:
+            fragments.append(f"Dolor referido: {base_summary.pain_scale}/10.")
+        if base_summary.red_flags:
+            fragments.append("Señales de alerta: " + ", ".join(base_summary.red_flags[:3]) + ".")
+        if base_summary.medications:
+            fragments.append("Medicación mencionada: " + ", ".join(base_summary.medications[:3]) + ".")
+        if base_summary.allergies:
+            fragments.append("Alergias mencionadas: " + ", ".join(base_summary.allergies[:3]) + ".")
+        if base_summary.history:
+            fragments.append("Antecedentes relevantes: " + ", ".join(base_summary.history[:3]) + ".")
+        return "\n".join(f"- {fragment}" for fragment in fragments)
