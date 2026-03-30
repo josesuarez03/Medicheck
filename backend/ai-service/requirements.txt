@@ -7,3 +7,6 @@ rapidfuzz
 redis[hiredis]
 spacy>=3.7
 uvicorn[standard]
+psycopg[binary]>=3.2
+pgvector>=0.3
+SQLAlchemy>=2.0
