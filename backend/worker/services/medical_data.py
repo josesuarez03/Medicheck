@@ -4,7 +4,6 @@ import logging
 from models.conversation import ConversationalDatasetManager
 from services.bedrock_claude import call_claude
 from services.comprehend_medical import detect_entities
-from services.send_api import send_data_to_django
 
 logger = logging.getLogger(__name__)
 
@@ -155,9 +154,3 @@ Texto consolidado:
                             return occupation
         return ""
 
-    def send_data_to_django(self, user_id, medical_data, jwt_token=None):
-        try:
-            return send_data_to_django(user_id, medical_data, jwt_token=jwt_token)
-        except Exception as e:
-            logger.error("Error al enviar datos a Django: %s", str(e))
-            return {"error": f"Error al enviar datos a Django: {str(e)}"}

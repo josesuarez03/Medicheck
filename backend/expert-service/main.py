@@ -7,7 +7,7 @@ from services.loader import load_knowledge_base
 app = FastAPI(
     title="Hipo Expert Service",
     version="0.1.0",
-    description="Bootstrap FastAPI del servicio experto.",
+    description="Servicio experto autónomo para triaje basado en reglas.",
 )
 
 

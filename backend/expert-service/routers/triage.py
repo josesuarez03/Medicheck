@@ -27,8 +27,7 @@ async def health() -> dict[str, str]:
     }
 
 
-@router.post("/evaluate")
-async def evaluate(payload: ExpertRequest) -> dict[str, Any]:
+def _serialize_decision(payload: ExpertRequest) -> dict[str, Any]:
     decision = expert_orchestrator.evaluate(
         user_message=payload.message,
         prior_expert_state=payload.context.get("expert_state"),
@@ -56,6 +55,16 @@ async def evaluate(payload: ExpertRequest) -> dict[str, Any]:
             "triage_level": decision.state.triage_level,
         },
     }
+
+
+@router.post("/triage")
+async def triage(payload: ExpertRequest) -> dict[str, Any]:
+    return _serialize_decision(payload)
+
+
+@router.post("/evaluate")
+async def evaluate(payload: ExpertRequest) -> dict[str, Any]:
+    return _serialize_decision(payload)
 
 
 @router.post("/emergency-check")
