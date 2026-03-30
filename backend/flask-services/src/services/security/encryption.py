@@ -1,40 +1,32 @@
 from cryptography.fernet import Fernet
-import base64
-import os
-import jwt
 from config.config import Config
 
 class Encryption:
 
-    def __init__(self, jwt_token=None):
-
-        if jwt_token:
-            try:
-                # Decodificar el token JWT para obtener datos únicos
-                payload = jwt.decode(jwt_token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
-                # Usar una parte del payload decodificado como clave
-                key_data = str(payload).encode('utf-8')
-                self.key = base64.urlsafe_b64encode(key_data[:32])  # Asegurarse de que la clave tenga 32 bytes
-            except jwt.InvalidTokenError:
-                raise ValueError("El token JWT proporcionado no es válido.")
-        else:
-            # Generar una clave aleatoria si no se proporciona un token JWT
-            self.key = Fernet.generate_key()
-
-        self.cipher = Fernet(self.key)
+    def __init__(self, key=None):
+        configured_key = key or Config.MONGO_ENCRYPTION_KEY
+        if not configured_key:
+            raise ValueError("MONGO_ENCRYPTION_KEY must be configured.")
+        if isinstance(configured_key, str):
+            configured_key = configured_key.encode("utf-8")
+        try:
+            self.cipher = Fernet(configured_key)
+        except Exception as exc:
+            raise ValueError("MONGO_ENCRYPTION_KEY must be a valid Fernet key.") from exc
+        self.key = configured_key
 
     def encrypt_string(self, text):
 
         if isinstance(text, str):
             text = text.encode('utf-8')
         encrypted_text = self.cipher.encrypt(text)
-        return base64.urlsafe_b64encode(encrypted_text).decode('utf-8')
+        return encrypted_text.decode('utf-8')
     
     def decrypt_string(self, encrypted_text):
 
         if isinstance(encrypted_text, str):
             encrypted_text = encrypted_text.encode('utf-8')
-        decrypted = self.cipher.decrypt(base64.urlsafe_b64decode(encrypted_text))
+        decrypted = self.cipher.decrypt(encrypted_text)
         return decrypted.decode('utf-8')
     
     def encrypt_endpoint(self, endpoint):

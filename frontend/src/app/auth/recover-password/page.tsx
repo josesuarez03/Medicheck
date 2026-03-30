@@ -24,6 +24,8 @@ import {
 } from "react-icons/tb";
 import { ROUTES } from '@/routes/routePaths';
 
+const PASSWORD_RESET_EMAIL_KEY = 'password_reset_email';
+
 // Esquema para solicitar recuperación (email)
 const requestResetSchema = z.object({
   email: z.string()
@@ -55,9 +57,10 @@ export default function RecoverPassword() {
   const searchParams = useSearchParams(); // Usar searchParams en lugar de router.query
   
   // Obtener parámetros de la URL
-  const email = searchParams.get('email');
-  const code = searchParams.get('code');
+  const emailFromQuery = searchParams.get('email');
+  const codeFromQuery = searchParams.get('code');
   const verified = searchParams.get('verified');
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(emailFromQuery);
   
   const [mode, setMode] = useState<'request' | 'reset'>(verified === 'true' ? 'reset' : 'request');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,23 +70,36 @@ export default function RecoverPassword() {
   // Formulario para solicitud inicial
   const requestForm = useForm<RequestResetInputs>({
     resolver: zodResolver(requestResetSchema),
+    defaultValues: {
+      email: emailFromQuery || '',
+    },
   });
 
   // Formulario para restablecer contraseña
   const resetForm = useForm<ResetPasswordInputs>({
     resolver: zodResolver(resetPasswordSchema),
     defaultValues: {
-      code: code || '',
+      code: codeFromQuery || '',
     }
   });
 
-  // Detectar email y código en la URL
+  // Detectar email y código en la URL o en sessionStorage para no pedir el correo otra vez.
   useEffect(() => {
-    if (email && code && verified === 'true') {
-      setMode('reset');
-      resetForm.setValue('code', code || '');
+    const storedEmail = typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(PASSWORD_RESET_EMAIL_KEY)
+      : null;
+    const resolvedEmail = emailFromQuery || storedEmail;
+
+    if (resolvedEmail) {
+      setRecoveryEmail(resolvedEmail);
+      requestForm.setValue('email', resolvedEmail);
     }
-  }, [email, code, verified, resetForm]);
+
+    if (resolvedEmail && codeFromQuery && verified === 'true') {
+      setMode('reset');
+      resetForm.setValue('code', codeFromQuery);
+    }
+  }, [emailFromQuery, codeFromQuery, verified, requestForm, resetForm]);
 
   // Manejar solicitud de recuperación
   const onRequestSubmit = async (data: RequestResetInputs) => {
@@ -96,6 +112,11 @@ export default function RecoverPassword() {
         email: data.email
       });
 
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(PASSWORD_RESET_EMAIL_KEY, data.email);
+      }
+      setRecoveryEmail(data.email);
+
       // En lugar de mostrar un mensaje, redirigir directamente a VerifyCode
       router.push(`${ROUTES.PUBLIC.VERIFY_CODE}?email=${data.email}`);
     } catch (err) {
@@ -107,7 +128,7 @@ export default function RecoverPassword() {
 
   // Manejar restablecimiento de contraseña
   const onResetSubmit = async (data: ResetPasswordInputs) => {
-    if (!email || !code) {
+    if (!recoveryEmail || !data.code) {
       handleApiError(new Error('Información de verificación inválida o expirada'));
       return;
     }
@@ -119,12 +140,16 @@ export default function RecoverPassword() {
     try {
       // Actualizar para usar la ruta correcta de la API y el formato correcto
       await API.post('password/reset/verify/', {
-        email: email,
+        email: recoveryEmail,
         code: data.code,
-        new_password: data.password
+        new_password: data.password,
+        confirm_password: data.confirmPassword,
       });
 
       setSuccessMessage('Contraseña restablecida con éxito');
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(PASSWORD_RESET_EMAIL_KEY);
+      }
       
       // Redirigir al login después de 2 segundos
       setTimeout(() => {
@@ -229,6 +254,19 @@ export default function RecoverPassword() {
             type="hidden" 
             {...resetForm.register('code')} 
           />
+
+          <div>
+            <Label htmlFor="recovery-email" className="flex items-center">
+              <TbMail className="h-5 w-5 mr-2 text-gray-500" />
+              Correo de recuperación
+            </Label>
+            <Input
+              id="recovery-email"
+              type="email"
+              value={recoveryEmail || ''}
+              disabled
+            />
+          </div>
 
           <div>
             <Label htmlFor="password" className="flex items-center">

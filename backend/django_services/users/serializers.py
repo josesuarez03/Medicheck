@@ -220,13 +220,13 @@ class RequiredOAuthUserSerializer(serializers.Serializer):
 
 class ChatbotAnalysisSerializer(serializers.Serializer):
     """Serializador para validar datos del análisis del chatbot"""
-    triaje_level = serializers.CharField(required=False, allow_null=True)
+    triaje_level = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     pain_scale = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=10)
-    medical_context = serializers.CharField(required=False, allow_null=True)
-    allergies = serializers.CharField(required=False, allow_null=True)
-    medications = serializers.CharField(required=False, allow_null=True)
-    medical_history = serializers.CharField(required=False, allow_null=True)
-    ocupacion = serializers.CharField(required=False, allow_null=True)
+    medical_context = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    allergies = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    medications = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    medical_history = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    ocupacion = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
@@ -234,11 +234,19 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 class PasswordResetVerifySerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     code = serializers.CharField(required=True, min_length=6, max_length=6)
-    new_password = serializers.CharField(required=True)
-    confirm_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=False, allow_blank=False)
+    confirm_password = serializers.CharField(required=False, allow_blank=False)
     
     def validate(self, data):
-        if data['new_password'] != data['confirm_password']:
+        new_password = data.get('new_password')
+        confirm_password = data.get('confirm_password')
+
+        if bool(new_password) != bool(confirm_password):
+            raise serializers.ValidationError(
+                {"confirm_password": "Debes proporcionar y confirmar la nueva contraseña."}
+            )
+
+        if new_password and new_password != confirm_password:
             raise serializers.ValidationError({"confirm_password": "Las contraseñas no coinciden"})
         return data
     

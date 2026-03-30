@@ -6,6 +6,7 @@ from bson import Binary
 from bson.binary import UuidRepresentation
 from pymongo import ASCENDING, DESCENDING
 from data.connect import mongo_db, redis_client
+from services.security.encryption import Encryption
 
 # Configurar logger
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ LIFECYCLE_ARCHIVED = "archived"
 LIFECYCLE_DELETED = "deleted"
 LIFECYCLE_ALLOWED = {LIFECYCLE_ACTIVE, LIFECYCLE_ARCHIVED, LIFECYCLE_DELETED}
 SOFT_DELETE_RETENTION_DAYS = 30
+ENCRYPTED_CONVERSATION_SCHEMA_VERSION = 2
 
 class ConversationalDatasetManager:
     
@@ -57,7 +59,53 @@ class ConversationalDatasetManager:
             return conversation
         if "_id" in conversation and isinstance(conversation["_id"], Binary):
             conversation["_id"] = self._binary_to_uuid(conversation["_id"])
+        conversation = self._decrypt_sensitive_fields(conversation)
         return self._apply_lifecycle_backfill(conversation)
+
+    def _encryption(self):
+        return Encryption()
+
+    def _encrypt_json_field(self, value):
+        if value is None:
+            return value
+        serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+        return self._encryption().encrypt_string(serialized)
+
+    def _decrypt_json_field(self, value):
+        if value in (None, ""):
+            return value
+        if isinstance(value, (dict, list)):
+            return value
+        if not isinstance(value, str):
+            return value
+
+        try:
+            decrypted = self._encryption().decrypt_string(value)
+            return json.loads(decrypted)
+        except Exception:
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
+    def _encrypt_sensitive_fields(self, conversation):
+        if not isinstance(conversation, dict):
+            return conversation
+        encrypted = dict(conversation)
+        encrypted["messages"] = self._encrypt_json_field(conversation.get("messages", []))
+        encrypted["medical_context"] = self._encrypt_json_field(conversation.get("medical_context", {}))
+        encrypted["schema_version"] = ENCRYPTED_CONVERSATION_SCHEMA_VERSION
+        return encrypted
+
+    def _decrypt_sensitive_fields(self, conversation):
+        if not isinstance(conversation, dict):
+            return conversation
+        decrypted = dict(conversation)
+        if "messages" in decrypted:
+            decrypted["messages"] = self._decrypt_json_field(decrypted.get("messages"))
+        if "medical_context" in decrypted:
+            decrypted["medical_context"] = self._decrypt_json_field(decrypted.get("medical_context"))
+        return decrypted
 
     def _uuid_to_binary(self, uuid_obj):
         """Convierte un UUID a Binary para MongoDB"""
@@ -91,7 +139,7 @@ class ConversationalDatasetManager:
                 "deleted_at": None,
                 "purge_after": None,
             }
-            self.collection.insert_one(conversation)
+            self.collection.insert_one(self._encrypt_sensitive_fields(conversation))
             logger.info(f"Conversación {conversation_id} agregada a MongoDB para el usuario {user_id}")
             
             # También guardar en Redis con expiración de 24 horas
@@ -185,7 +233,7 @@ class ConversationalDatasetManager:
                     "_id": self._uuid_to_binary(conversation_id),
                     "$or": [{"lifecycle_status": {"$exists": False}}, {"lifecycle_status": {"$ne": LIFECYCLE_DELETED}}],
                 },
-                {"$set": update_data}
+                {"$set": self._encrypt_sensitive_fields(update_data)}
             )
             
             logger.info(f"Conversación {conversation_id} actualizada en MongoDB para el usuario {user_id}, campos modificados: {result.modified_count}")
@@ -230,14 +278,23 @@ class ConversationalDatasetManager:
                 )
 
             merged_state = {**existing_etl_state, **etl_state}
+            current_conversation = self.get_conversation(user_id, conversation_id) or {}
+            medical_context = current_conversation.get("medical_context", {})
+            if not isinstance(medical_context, dict):
+                medical_context = {}
+            hybrid_state = medical_context.get("hybrid_state", {})
+            if not isinstance(hybrid_state, dict):
+                hybrid_state = {}
+            hybrid_state["etl"] = merged_state
+            medical_context["hybrid_state"] = hybrid_state
             update_data = {
-                "medical_context.hybrid_state.etl": merged_state,
+                "medical_context": medical_context,
                 "timestamp": datetime.now(),
             }
 
             result = self.collection.update_one(
                 {"user_id": user_id, "_id": self._uuid_to_binary(conversation_id)},
-                {"$set": update_data},
+                {"$set": self._encrypt_sensitive_fields(update_data)},
             )
             logger.info(
                 "Estado ETL actualizado en MongoDB para conversación %s usuario %s (modificados=%s)",
@@ -411,7 +468,7 @@ class ConversationalDatasetManager:
                             
                         result = self.collection.replace_one(
                             {"user_id": user_id, "_id": cached_data["_id"]},
-                            cached_data,
+                            self._encrypt_sensitive_fields(cached_data),
                             upsert=True
                         )
                         logger.info(f"Conversación {conversation_id} sincronizada de Redis a MongoDB para el usuario {user_id}")
@@ -429,7 +486,7 @@ class ConversationalDatasetManager:
                             
                         self.collection.replace_one(
                             {"user_id": cached_data["user_id"], "_id": cached_data["_id"]},
-                            cached_data,
+                            self._encrypt_sensitive_fields(cached_data),
                             upsert=True
                         )
                     logger.info(f"{len(all_cached)} conversaciones sincronizadas de Redis a MongoDB para el usuario {user_id}")

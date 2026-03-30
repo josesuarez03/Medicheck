@@ -8,7 +8,8 @@ from .views import (
     PasswordResetVerifyView, ChangePasswordView, AccountDeleteView, 
     PatientHistoryCreateView, PatientHistoryViewSet, PatientViewSet,
     DoctorViewSet, PatientMeView, 
-    PatientMeHistoryView, DoctorPatientRelationViewSet, PatientMedicalDataUpdateView, LoginView, LogoutView
+    PatientMeHistoryView, DoctorPatientRelationViewSet, PatientMedicalDataUpdateView, LoginView, LogoutView,
+    PatientHistoryAccessTokenView,
 )
 
 router = DefaultRouter()
@@ -46,6 +47,7 @@ urlpatterns = [
     
     # Vistas específicas para pacientes
     path('patients/me/', PatientMeView.as_view(), name='patient-me'),
+    path('patients/me/history/token/', PatientHistoryAccessTokenView.as_view(), name='patient-me-history-token'),
     path('patients/me/history/', PatientMeHistoryView.as_view(), name='patient-me-history'),
     
 

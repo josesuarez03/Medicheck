@@ -122,9 +122,14 @@ export default function DashboardPage() {
           return;
         }
 
+        const historyTokenResponse = await API.get("patients/me/history/token/");
+        const historyToken = historyTokenResponse.data?.token;
+
         const [patientRes, historyRes] = await Promise.allSettled([
           API.get("patients/me/"),
-          API.get("patients/me/history/?page_size=6"),
+          API.get("patients/me/history/", {
+            params: { page_size: 6, token: historyToken },
+          }),
         ]);
 
         let patientData: PatientSummary | null = null;

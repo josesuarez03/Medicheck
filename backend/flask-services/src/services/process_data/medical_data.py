@@ -70,9 +70,18 @@ Texto consolidado:
             return "No se pudo generar el resumen del contexto médico."
 
     def extract_structured_data(self, conversation, messages, enhanced_entities):
+        raw_pain = conversation.get("pain_scale")
+        pain_scale = None
+        if raw_pain is not None:
+            try:
+                pain_scale = int(float(raw_pain))
+                pain_scale = max(0, min(10, pain_scale))
+            except (TypeError, ValueError):
+                pain_scale = None
+
         return {
-            "triaje_level": conversation.get("triaje_level"),
-            "pain_scale": conversation.get("pain_scale"),
+            "triaje_level": conversation.get("triaje_level") or None,
+            "pain_scale": pain_scale,
             "medical_context": "",
             "allergies": self.extract_allergies(messages, enhanced_entities),
             "medications": self.extract_medications(enhanced_entities),

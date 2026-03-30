@@ -9,10 +9,13 @@ import API from '@/services/api';
 import { useApiError } from '@/hooks/useApiError';
 import { ROUTES } from '@/routes/routePaths';
 
+const PASSWORD_RESET_EMAIL_KEY = 'password_reset_email';
+
 export default function VerifyCode() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const email = searchParams.get('email');
+  const emailFromQuery = searchParams.get('email');
+  const [email, setEmail] = useState<string | null>(emailFromQuery);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [code, setCode] = useState(['', '', '', '', '', '']);
@@ -29,10 +32,22 @@ export default function VerifyCode() {
   ];
 
   useEffect(() => {
+    const storedEmail = typeof window !== 'undefined'
+      ? window.sessionStorage.getItem(PASSWORD_RESET_EMAIL_KEY)
+      : null;
+    const resolvedEmail = emailFromQuery || storedEmail;
+
+    if (resolvedEmail) {
+      setEmail(resolvedEmail);
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(PASSWORD_RESET_EMAIL_KEY, resolvedEmail);
+      }
+    }
+
     if (inputRefs[0].current) {
       inputRefs[0].current.focus();
     }
-  }, []);
+  }, [emailFromQuery]);
 
   const handleCodeChange = (index: number, value: string) => {
     if (value && !/^\d*$/.test(value)) return;
@@ -94,18 +109,21 @@ export default function VerifyCode() {
     clearError();
 
     try {
-      const newPassword = "TemporaryPass123!"; // Temporal
-
       await API.post('password/reset/verify/', {
         email,
         code: fullCode,
-        new_password: newPassword
       });
 
-      router.push(`${ROUTES.PUBLIC.LOGIN}?message=Contraseña%20restablecida%20correctamente.%20Ahora%20puedes%20iniciar%20sesión.`);
+      if (typeof window !== 'undefined' && email) {
+        window.sessionStorage.setItem(PASSWORD_RESET_EMAIL_KEY, email);
+      }
+
+      router.push(
+        `${ROUTES.PUBLIC.RECOVER_PASSWORD}?verified=true&email=${encodeURIComponent(email)}&code=${encodeURIComponent(fullCode)}`
+      );
     } catch (err) {
       handleApiError(err);
-      setVerificationMessage('Código inválido. Por favor, intenta nuevamente.');
+      setVerificationMessage('No se pudo continuar con el restablecimiento.');
     } finally {
       setIsSubmitting(false);
     }

@@ -14,15 +14,9 @@ logger = logging.getLogger(__name__)
 def process_message():
 
     data = request.get_json()
-    user_id = resolve_request_user_id(
-        request,
-        allow_query_fallback=False,
-        allow_body_fallback=True,
-        default_user_id="Anonymous",
-    )
-
-    if user_id == "Anonymous":
-        logging.warning(f"No se encontró token de autenticación, usando: {user_id}. Usando ID de usuario genérico.")
+    user_id = resolve_request_user_id(request)
+    if not user_id:
+        return jsonify({"error": "Se requiere autenticación válida."}), 401
     
     user_message = data.get('message', '')
     user_data = data.get('context', {})
@@ -38,7 +32,7 @@ def process_message():
 
 @bp.route('/conversations', methods=['GET'])
 def get_user_conversations():
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
     
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -56,7 +50,7 @@ def get_user_conversations():
 
 @bp.route('/conversations', methods=['DELETE'])
 def soft_delete_user_conversations():
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
 
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -76,7 +70,7 @@ def soft_delete_user_conversations():
 
 @bp.route('/conversation/<conversation_id>', methods=['GET'])
 def get_conversation(conversation_id):
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
     
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -95,7 +89,7 @@ def get_conversation(conversation_id):
 
 @bp.route('/conversation/<conversation_id>/archive', methods=['POST'])
 def archive_conversation(conversation_id):
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
 
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -118,7 +112,7 @@ def archive_conversation(conversation_id):
 
 @bp.route('/conversation/<conversation_id>/recover', methods=['POST'])
 def recover_conversation(conversation_id):
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
 
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -140,7 +134,7 @@ def recover_conversation(conversation_id):
 
 @bp.route('/conversation/<conversation_id>', methods=['DELETE'])
 def delete_conversation(conversation_id):
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
     
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -163,7 +157,7 @@ def delete_conversation(conversation_id):
 
 @bp.route('/sync', methods=['POST'])
 def sync_redis_to_mongo():
-    user_id = resolve_request_user_id(request, allow_query_fallback=False, allow_body_fallback=True)
+    user_id = resolve_request_user_id(request)
     
     if not user_id:
         return jsonify({"error": "Se requiere autenticación válida."}), 401
@@ -180,7 +174,7 @@ def sync_redis_to_mongo():
 @bp.route('/process_medical_data', methods=['POST'])
 def process_medical_data():
 
-    user_id = resolve_request_user_id(request, allow_query_fallback=True, allow_body_fallback=False)
+    user_id = resolve_request_user_id(request)
     data = request.get_json()
     
     if not user_id:

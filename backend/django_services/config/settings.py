@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
+from cryptography.fernet import Fernet
 
 load_dotenv()
 
@@ -121,6 +123,16 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'oauth2_provider.contrib.rest_framework.OAuth2Authentication',
     ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/min',
+        'user': '100/min',
+        'login': '5/min',
+        'password_reset': '5/min',
+    },
     'DEFAULT_FILTER_BACKENDS': [
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
@@ -130,11 +142,11 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
-    'SIGNING_KEY': SECRET_KEY,
+    'SIGNING_KEY': os.getenv('JWT_SECRET_KEY', SECRET_KEY),
     'ALGORITHM': os.getenv('JWT_ALGORITHM'),
     'AUTH_HEADER_TYPES': ('Bearer',),
     'USER_ID_FIELD': 'id',
@@ -183,10 +195,18 @@ STATIC_URL = '/static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+CACHE_REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
+CACHE_REDIS_USE_TLS = os.getenv('REDIS_USE_TLS', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
+CACHE_REDIS_SCHEME = 'rediss' if CACHE_REDIS_USE_TLS else 'redis'
+CACHE_REDIS_AUTH = f":{CACHE_REDIS_PASSWORD}@" if CACHE_REDIS_PASSWORD else ""
+
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB1')}",
+        'LOCATION': f"{CACHE_REDIS_SCHEME}://{CACHE_REDIS_AUTH}{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB1')}",
+        'OPTIONS': {
+            'ssl_cert_reqs': os.getenv('REDIS_SSL_CERT_REQS', 'required'),
+        } if CACHE_REDIS_USE_TLS else {},
     }
 }
 
@@ -198,6 +218,21 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # tu dirección de correo electr
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # tu contraseña de correo electrónico
 
 FLASK_API_KEY = os.getenv('FLASK_API_KEY', os.getenv('DJANGO_SECRET_KEY', ''))
+FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', '')
+AUDIT_SIGNING_KEY = os.getenv('AUDIT_SIGNING_KEY', '')
+
+if not FLASK_API_KEY:
+    raise ImproperlyConfigured("FLASK_API_KEY must be configured.")
+if not CACHE_REDIS_PASSWORD:
+    raise ImproperlyConfigured("REDIS_PASSWORD must be configured.")
+if not FIELD_ENCRYPTION_KEY:
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEY must be configured.")
+if not AUDIT_SIGNING_KEY:
+    raise ImproperlyConfigured("AUDIT_SIGNING_KEY must be configured.")
+try:
+    Fernet(FIELD_ENCRYPTION_KEY.encode("utf-8"))
+except Exception as exc:
+    raise ImproperlyConfigured("FIELD_ENCRYPTION_KEY must be a valid Fernet key.") from exc
 
 if not DEBUG:
     ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host != '*']

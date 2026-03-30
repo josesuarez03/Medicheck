@@ -38,7 +38,7 @@ def persist_turn_data(
                 symptoms=response_data.get("symptoms", []),
                 symptoms_pattern=response_data.get("symptoms_pattern", {}),
                 pain_scale=response_data.get("pain_scale", 0),
-                triaje_level=response_data.get("triaje_level", ""),
+                triaje_level=response_data.get("triaje_level") or None,
                 medical_context=medical_context,
             )
         else:
@@ -49,7 +49,7 @@ def persist_turn_data(
                 response_data.get("symptoms", []),
                 response_data.get("symptoms_pattern", {}),
                 response_data.get("pain_scale", 0),
-                response_data.get("triaje_level", ""),
+                response_data.get("triaje_level") or None,
             )
     else:
         conversation_id = conversational_dataset_manager.add_conversation(
@@ -59,7 +59,7 @@ def persist_turn_data(
             response_data.get("symptoms", []),
             response_data.get("symptoms_pattern", {}),
             response_data.get("pain_scale", 0),
-            response_data.get("triaje_level", ""),
+            response_data.get("triaje_level") or None,
         )
 
     return conversation_id

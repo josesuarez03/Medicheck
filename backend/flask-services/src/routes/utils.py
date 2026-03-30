@@ -42,7 +42,7 @@ def extract_bearer_token(auth_header: str | None) -> str | None:
 
 def resolve_request_user_id(
     request,
-    allow_query_fallback: bool = True,
+    allow_query_fallback: bool = False,
     allow_body_fallback: bool = False,
     default_user_id: str | None = None,
 ):

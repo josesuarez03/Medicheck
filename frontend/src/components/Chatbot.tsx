@@ -427,7 +427,6 @@ export default function Chatbot() {
 
     const messagePayload = {
       message: trimmed,
-      user_id: user?.id || 'guest',
       timestamp: new Date().toISOString(),
       context: {},
       conversation_id: activeConversationId,

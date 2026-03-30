@@ -182,6 +182,10 @@ TFG/
 ├── backend/
 │   ├── django_services/      # API principal (usuarios y datos clinicos)
 │   └── flask-services/       # Chatbot y logica de triaje
+├── docs/
+│   ├── plans/                # Planes de trabajo y mejoras
+│   ├── academic/             # Poster, gantt y material academico de apoyo
+│   └── architecture/         # Diagramas y artefactos de arquitectura
 ├── nginx/                    # Configuracion de proxy y SSL
 ├── docker-compose.yml
 └── README.md

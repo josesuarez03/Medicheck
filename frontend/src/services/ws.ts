@@ -1,11 +1,13 @@
 import { io, Socket } from "socket.io-client";
 import type { ChatResponsePayload } from "@/types/messages";
+import { getAccessToken, refreshAccessToken } from "@/services/authTokens";
 
 class SocketIOService {
   private socket: Socket | null = null;
   private listeners: ((payload: ChatResponsePayload) => void)[] = [];
   private errorListeners: ((message: string) => void)[] = [];
   private url: string;
+  private authenticated = false;
 
   constructor(url: string) {
     this.url = url;
@@ -14,7 +16,7 @@ class SocketIOService {
   async connect(): Promise<void> {
     if (this.socket && this.socket.connected) return;
 
-    const token = sessionStorage.getItem("access_token");
+    const token = getAccessToken();
 
     this.socket = io(this.url, {
       transports: ["websocket", "polling"],
@@ -24,21 +26,25 @@ class SocketIOService {
       timeout: 20000,
       autoConnect: true,
       forceNew: false,
-      auth: { token },
-      query: { token },
     });
 
     this.socket.on("connect", () => {
+      this.authenticated = false;
       if (token) {
         this.socket?.emit("authenticate", { token });
       }
     });
 
     this.socket.on("reconnect", () => {
-      const currentToken = sessionStorage.getItem("access_token");
+      this.authenticated = false;
+      const currentToken = getAccessToken();
       if (currentToken) {
         this.socket?.emit("authenticate", { token: currentToken });
       }
+    });
+
+    this.socket.on("authenticated", () => {
+      this.authenticated = true;
     });
 
     this.socket.on("chat_response", (data: unknown) => {
@@ -54,6 +60,16 @@ class SocketIOService {
     });
 
     this.socket.on("connection_error", (data: unknown) => {
+      this.handleIncomingError(data);
+    });
+
+    this.socket.on("auth_required", async (data: unknown) => {
+      this.authenticated = false;
+      const refreshedToken = await refreshAccessToken();
+      if (refreshedToken) {
+        this.socket?.emit("authenticate", { token: refreshedToken });
+        return;
+      }
       this.handleIncomingError(data);
     });
   }
@@ -89,7 +105,7 @@ class SocketIOService {
   }
 
   sendMessage(message: string, additionalData?: Record<string, unknown>): boolean {
-    if (!this.socket?.connected) return false;
+    if (!this.socket?.connected || !this.authenticated) return false;
 
     let messageData: unknown = message;
     try {
@@ -107,7 +123,7 @@ class SocketIOService {
   }
 
   reauthenticate(): void {
-    const token = sessionStorage.getItem("access_token");
+    const token = getAccessToken();
     if (this.socket?.connected && token) {
       this.socket.emit("authenticate", { token });
     }

@@ -1,6 +1,7 @@
 import axios from "axios";
 import { LoginResponse } from "@/types/auth";
 import { UserProfile, RegisterData, ProfileUpdateData } from "@/types/user";
+import { clearAuthTokens, getAccessToken, getRefreshToken, refreshAccessToken } from "@/services/authTokens";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -16,7 +17,7 @@ const API = axios.create({
 
 API.interceptors.request.use(
   (config) => {
-    const token = sessionStorage.getItem("access_token");
+    const token = getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -33,29 +34,24 @@ API.interceptors.response.use(
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      const refreshToken = sessionStorage.getItem("refresh_token");
+      const refreshToken = getRefreshToken();
 
       if (!refreshToken) {
         return Promise.reject(error);
       }
 
       try {
-        const response = await axios.post(
-          `${API_URL}token/refresh/`,
-          { refresh: refreshToken },
-          { headers: { "Content-Type": "application/json" } }
-        );
-
-        const { access } = response.data;
-        sessionStorage.setItem("access_token", access);
+        const access = await refreshAccessToken();
+        if (!access) {
+          return Promise.reject(error);
+        }
         originalRequest.headers = {
           ...originalRequest.headers,
           Authorization: `Bearer ${access}`,
         };
         return API(originalRequest);
       } catch (refreshError) {
-        sessionStorage.removeItem("access_token");
-        sessionStorage.removeItem("refresh_token");
+        clearAuthTokens();
         return Promise.reject(refreshError);
       }
     }
@@ -95,7 +91,7 @@ export const register = async (data: RegisterData): Promise<LoginResponse> => {
 };
 
 export const getUserProfile = async (): Promise<UserProfile> => {
-  const token = sessionStorage.getItem("access_token");
+  const token = getAccessToken();
   if (!token) {
     throw new Error("No hay token de acceso disponible");
   }
@@ -125,8 +121,7 @@ export const logout = async (): Promise<void> => {
       await API.post("logout/");
     }
   } finally {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("refresh_token");
+    clearAuthTokens();
   }
 };
 
@@ -135,8 +130,7 @@ export const deleteUser = async (password: string): Promise<void> => {
     data: { password },
   });
 
-  sessionStorage.removeItem("access_token");
-  sessionStorage.removeItem("refresh_token");
+  clearAuthTokens();
 };
 
 export const changePassword = async (data: {

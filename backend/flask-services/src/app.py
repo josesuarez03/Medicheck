@@ -1,7 +1,8 @@
-from flask import Flask, request
+from datetime import datetime, timezone
+
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from config.config import Config
-from routes import init_app, socketio
 import logging
 from services.chatbot.input_validate import setup_nltk
 
@@ -11,6 +12,10 @@ setup_nltk()
 
 def create_app(config_class=Config):
     """Crear y configurar la aplicación Flask con mejor soporte para WebSockets"""
+    config_class.validate()
+    from data.connect import mongo_client, redis_client
+    from routes import init_app, socketio
+
     app = Flask(__name__)
     app.config.from_object(config_class)
     
@@ -25,9 +30,36 @@ def create_app(config_class=Config):
     def validate_django_integration():
         if config_class.DJANGO_INTEGRATION:
             # Si viene de Django, verificar la autenticación
-            django_token = request.headers.get('X-Django-Integration-Token')
-            if not django_token and app.config.get('DJANGO_VALIDATION_REQUIRED', False):
-                logger.warning("Petición recibida sin token de integración Django")
+            request_signature = request.headers.get('X-Request-Signature')
+            if not request_signature and app.config.get('DJANGO_VALIDATION_REQUIRED', False):
+                logger.warning("Petición recibida sin firma de integración Django")
+
+    @app.get("/health")
+    def health():
+        checks = {}
+        status_code = 200
+
+        try:
+            mongo_client.admin.command("ping")
+            checks["mongo"] = "ok"
+        except Exception as exc:
+            checks["mongo"] = f"error:{exc}"
+            status_code = 503
+
+        try:
+            redis_client.ping()
+            checks["redis"] = "ok"
+        except Exception as exc:
+            checks["redis"] = f"error:{exc}"
+            status_code = 503
+
+        return jsonify(
+            {
+                "status": "ok" if status_code == 200 else "degraded",
+                "checks": checks,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        ), status_code
     
     # Inicializar rutas y WebSockets con manejo de errores
     try:
@@ -45,6 +77,7 @@ def create_app(config_class=Config):
 
 if __name__ == '__main__':
     app = create_app()
+    from routes import socketio
     # Optimizar configuración de Socket.IO
     socketio.run(
         app, 
