@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.validators import UniqueValidator
-from .models import Patient, Doctor, DoctorPatientRelation, PatientHistoryEntry
+from .models import Patient, Doctor, DoctorPatientRelation, PatientHistoryEntry, PatientClinicalSummary
 
 User = get_user_model()
 
@@ -284,3 +284,72 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
     
     def get_source_display(self, obj):
         return dict(PatientHistoryEntry._meta.get_field('source').choices).get(obj.source)
+
+
+class PatientClinicalSummarySerializer(serializers.ModelSerializer):
+    validated_by_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = PatientClinicalSummary
+        fields = (
+            'id',
+            'patient',
+            'summary_version',
+            'chief_complaint_current',
+            'known_allergies',
+            'current_medications',
+            'medical_history_known',
+            'risk_factors',
+            'occupation_context',
+            'baseline_pain_context',
+            'recent_triage_history',
+            'active_episode_snapshot',
+            'clinical_flags',
+            'summary',
+            'last_source_update_at',
+            'last_embedding_refresh_at',
+            'is_validated',
+            'validated_by',
+            'validated_by_name',
+            'validated_at',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = (
+            'id',
+            'summary_version',
+            'last_source_update_at',
+            'last_embedding_refresh_at',
+            'validated_by_name',
+            'validated_at',
+            'created_at',
+            'updated_at',
+        )
+
+    def get_validated_by_name(self, obj):
+        if obj.validated_by:
+            return f"Dr. {obj.validated_by.user.first_name} {obj.validated_by.user.last_name}"
+        return None
+
+
+class PatientClinicalSummaryContextSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PatientClinicalSummary
+        fields = (
+            'patient',
+            'summary_version',
+            'chief_complaint_current',
+            'known_allergies',
+            'current_medications',
+            'medical_history_known',
+            'risk_factors',
+            'occupation_context',
+            'baseline_pain_context',
+            'recent_triage_history',
+            'active_episode_snapshot',
+            'clinical_flags',
+            'summary',
+            'last_source_update_at',
+            'is_validated',
+        )
+        read_only_fields = fields
