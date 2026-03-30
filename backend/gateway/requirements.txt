@@ -1,3 +1,4 @@
+celery
 fastapi
 httpx
 python-jose[cryptography]

@@ -1,5 +1,6 @@
 import os
 from typing import Any
+import uuid
 
 import asyncio
 
@@ -32,19 +33,27 @@ async def forward_to_expert(payload: dict[str, Any], path: str = "/expert/triage
 
 
 async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
+    conversation_id = payload.get("conversation_id") or str(uuid.uuid4())
+    user_id = payload.get("user_id")
+    jwt_token = payload.get("jwt_token")
+    ai_payload = {
+        **payload,
+        "conversation_id": conversation_id,
+    }
     expert_payload = {
         "message": payload.get("message", ""),
         "context": payload.get("context", {}),
     }
     expert_result, ai_result = await asyncio.gather(
         forward_to_expert(expert_payload),
-        forward_to_ai(payload),
+        forward_to_ai(ai_payload),
     )
 
     if expert_result.get("emergency_triggered"):
         return {
             "status": "ok",
             "service": "gateway",
+            "conversation_id": conversation_id,
             "response_source": "expert",
             "response": expert_result.get("response", ""),
             "triaje_level": expert_result.get("triage_level", "Severo"),
@@ -52,12 +61,32 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
             "ai": ai_result,
         }
 
+    etl_dispatch = None
+    ai_conversation_state = ai_result.get("conversation_state", {}) if isinstance(ai_result, dict) else {}
+    if (
+        isinstance(ai_conversation_state, dict)
+        and ai_conversation_state.get("should_trigger_etl") is True
+        and user_id
+        and conversation_id
+    ):
+        etl_dispatch = enqueue_etl_dispatch(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            jwt_token=jwt_token,
+            reasons=[str(ai_conversation_state.get("etl_reason") or "closure_confirmed")],
+        )
+        ai_conversation_state["etl_dispatch"] = etl_dispatch
+
     return {
         "status": "ok",
         "service": "gateway",
+        "conversation_id": conversation_id,
         "response_source": "ai",
         "response": ai_result.get("response", ""),
         "triaje_level": ai_result.get("triaje_level") or expert_result.get("triage_level", "Leve"),
         "expert": expert_result,
         "ai": ai_result,
+        "conversation_state": ai_conversation_state,
+        "etl_dispatch": etl_dispatch,
     }
+from services.etl_dispatcher import enqueue_etl_dispatch
