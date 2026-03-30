@@ -1,13 +1,24 @@
+from __future__ import annotations
+
 import logging
-from services.chatbot.context_manager import init_context
-from services.chatbot.comprehend_medical import detect_entities
-from services.chatbot.input_validate import analyze_message, generate_response
-from services.chatbot.triaje_classification import TriageClassification
-from services.chatbot.bedrock_claude import call_claude
-from services.chatbot.conversation_context_service import ConversationContextService
-from services.chatbot.pain_utils import extract_pain_scale
+
+from services.bedrock_claude import build_turn_prompt, call_claude
+from services.comprehend_medical import detect_entities
+from services.context_manager import init_context
+from services.conversation_context_service import ConversationContextService
+from services.embeddings import build_embedding_payload
+from services.input_validate import MessageAnalysis, analyze_message, generate_response
+from services.medical_facts import FactsSummary, MedicalFact
+from services.pain_utils import extract_pain_scale
+from services.triaje_classification import TriageClassification
+
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+CLINICAL_SIGNAL_THRESHOLD_EMBED = 0.25
+CLINICAL_SIGNAL_THRESHOLD_DEEP_EXTRACT = 0.15
+
 
 class Chatbot:
     def __init__(
@@ -21,243 +32,203 @@ class Chatbot:
         postgres_context=None,
     ):
         self.user_input = user_input
-        self.user_data = user_data
+        self.user_data = user_data or {}
         self.initial_prompt = initial_prompt
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.existing_context = existing_context or {}
         self.postgres_context = postgres_context or {}
         self.context = {}
-        self.triage = None
-        self.entities = None
         self.response = None
-        self.context_service = ConversationContextService()
         self.max_questions_per_turn = 2
+        self.context_service = None
+        if self.user_id and self.conversation_id:
+            try:
+                self.context_service = ConversationContextService()
+            except Exception as exc:
+                logger.warning("Conversation context service unavailable: %s", exc)
 
     def initialize_conversation(self):
         try:
-            # Validar el mensaje del usuario
-            analysis_result = analyze_message(self.user_input)
-            
-            # Fix: analyze_message returns a tuple, handle it correctly
-            if isinstance(analysis_result, tuple):
-                analysis_type, error_message = analysis_result
-            else:
-                # Handle the case where it might return a dict
-                analysis_type = analysis_result.get('type', 'general_response')
-                error_message = analysis_result.get('error', '')
-            
-            # Check if the analysis indicates an invalid message
-            if analysis_type == "input_error":
-                return {"error": error_message or "Mensaje inválido o irreconocible."}
-            
-            # Handle greeting messages with a direct response
-            if analysis_type == "greeting":
-                greeting_response = generate_response(self.user_input)
-                return {
-                    "context": self.user_data or {},
-                    "triaje_level": "info",
-                    "entities": [],
-                    "response": greeting_response,
-                    "symptoms": [],
-                    "symptoms_pattern": "",
-                    "pain_scale": 0,
-                    "missing_questions": [],
-                    "analysis_type": analysis_type,
-                    "conversation_state": {
-                        "missing_fields": [],
-                        "collected_fields": list((self.user_data or {}).keys()),
-                        "next_intent": "collect_initial_symptoms",
-                        "loop_guard_triggered": False,
-                        "questions_selected": [],
-                        "max_questions_per_turn": self.max_questions_per_turn
-                    }
-                }
-            
-            # Detectar entidades médicas
-            self.entities = detect_entities(self.user_input)
-            
-            # Fix: init_context expects text, not user_data object
-            # Pass the user_input as text for entity extraction
+            analysis = analyze_message(self.user_input)
+            if not analysis.is_valid:
+                return {"error": analysis.error_message or "Mensaje inválido o irreconocible."}
+
+            if analysis.analysis_type == "greeting":
+                return self._build_non_clinical_response(analysis)
+
+            deep_extract = analysis.clinical_signal_score >= CLINICAL_SIGNAL_THRESHOLD_DEEP_EXTRACT
+            extraction = detect_entities(self.user_input, context=self.existing_context if deep_extract else None)
+            structured_facts = extraction.get("facts", [])
+            facts_summary = FactsSummary(**(extraction.get("facts_summary", {}) or {}))
+
+            if analysis.analysis_type == "non_clinical" and not structured_facts:
+                return self._build_non_clinical_response(analysis, facts_summary=facts_summary)
+
             context_result = init_context(self.user_input, user_data=self.user_data, existing_context=self.existing_context)
-            
-            # Extract context from the result
-            if isinstance(context_result, dict):
-                self.context = context_result.get('context', {})
-                missing_questions = context_result.get('missing_questions', [])
-            else:
-                self.context = context_result
-                missing_questions = []
-            
-            # Add medical entities to context
-            if self.entities:
-                self.context['medical_entities'] = self.entities
-            
-            # Fix: TriageClassification constructor expects specific parameters
-            # Extract symptoms and pain level from entities or context
-            symptoms = self._extract_symptoms_from_entities(self.entities)
-            pain_level = self._extract_pain_level_from_context()
-            
-            # Add extracted information to context
-            self.context['symptoms'] = symptoms
-            self.context['pain_level'] = pain_level
-            
-            # Crear instancia de TriageClassification con los parámetros correctos
-            self.triage = TriageClassification(
-                symptoms=symptoms,
-                pain_level=pain_level,
-                environment=self.context.get('environment', 'general')
+            self.context = context_result.get("context", {}) if isinstance(context_result, dict) else {}
+            self.context["facts_summary"] = facts_summary.model_dump()
+            self.context["medical_entities"] = structured_facts
+            symptoms = list(dict.fromkeys(facts_summary.chief_complaints + facts_summary.symptoms))
+            pain_level = self._extract_pain_level_from_summary(facts_summary)
+            self.context["symptoms"] = symptoms
+            self.context["pain_level"] = pain_level
+
+            triage = TriageClassification.from_facts(
+                facts_summary,
+                existing_context=self.existing_context,
+                environment=self.context.get("environment", "general"),
             )
+            real_facts = [MedicalFact(**fact) if isinstance(fact, dict) else fact for fact in structured_facts]
+            embedding_payload = build_embedding_payload(self.user_input, real_facts, analysis, facts_summary)
+
             questions_selected = []
-
-            prompt_context = self.context
-            if self.user_id and self.conversation_id:
-                prompt_context = self.context_service.build_prompt_context(
-                    user_id=self.user_id,
-                    conversation_id=self.conversation_id,
-                    user_input=self.user_input,
-                    current_context=self.context,
-                    missing_questions=missing_questions,
-                    questions_selected=questions_selected,
-                    postgres_context=self.postgres_context,
-                    triage_level=self.triage.triage_level,
-                )
-            else:
-                prompt_context = {
-                    **self.context,
-                    "user_input": self.user_input,
-                    "questions_selected": questions_selected,
-                    "postgres_context": self.postgres_context,
-                    "interaction_style": "turn_based",
-                    "max_questions_per_turn": self.max_questions_per_turn,
-                    "intro_mode": "brief_context_plus_one_question",
-                }
-            
-            self.response = call_claude(
-                prompt=prompt_context,
-                triage_level=self.triage.triage_level,
-                initial_prompt=self.initial_prompt
+            prompt_context = self._build_minimal_prompt_context(
+                facts_summary=facts_summary,
+                triage=triage,
+                questions_selected=questions_selected,
             )
+            prompt_metadata = build_turn_prompt(prompt_context, initial_prompt=self.initial_prompt)
 
-            loop_guard_triggered = False
-            if self.user_id and self.conversation_id:
-                loop_guard_triggered = self.context_service.detect_loop(
-                    self.user_id,
-                    self.conversation_id,
-                    self.response
+            try:
+                self.response = call_claude(
+                    prompt=prompt_context,
+                    triage_level=triage.triage_level,
+                    initial_prompt=self.initial_prompt,
                 )
-                if loop_guard_triggered:
-                    if questions_selected:
-                        questions_selected = questions_selected[:1]
-                    self.response = (
-                        "Para avanzar sin repetirnos, dame un ejemplo breve. "
-                        "Por ejemplo: 'desde hace 2 días, empeora por la noche'."
+            except Exception:
+                self.response = generate_response(self.user_input)
+
+            if triage.triage_level == "Severo":
+                self.response = triage.handle_severe_case(self.user_input)
+
+            if self.context_service and self.user_id and self.conversation_id:
+                try:
+                    self.context_service.append_turn(
+                        self.user_id,
+                        self.conversation_id,
+                        self.user_input,
+                        self.response,
+                        metadata={
+                            "triage_level": triage.triage_level,
+                            "prompt_sections_used": prompt_metadata["prompt_sections_used"],
+                        },
+                        facts=real_facts,
+                        facts_summary=facts_summary,
+                        analysis=analysis,
                     )
-            
-            # Handle severe cases
-            if self.triage.triage_level == 'Severo':
-                emergency_response = self.triage.handle_severe_case(self.user_input)
-                self.response = emergency_response
-            
-            # Extract additional triage information
-            symptoms_pattern = TriageClassification.analyze_symptom_pattern(symptoms)
-            
+                except Exception as exc:
+                    logger.warning("Could not persist conversational context: %s", exc)
+
             return {
                 "context": self.context,
-                "triaje_level": self.triage.triage_level,
-                "entities": self.entities,
+                "triaje_level": triage.triage_level,
+                "entities": structured_facts,
+                "structured_facts": extraction,
+                "facts_summary": facts_summary.model_dump(),
                 "response": self.response,
                 "symptoms": symptoms,
-                "symptoms_pattern": symptoms_pattern,
+                "symptoms_pattern": TriageClassification.analyze_symptom_pattern(symptoms),
                 "pain_scale": pain_level,
-                "missing_questions": missing_questions,
-                "analysis_type": analysis_type,
+                "missing_questions": [],
+                "analysis_type": analysis.analysis_type,
+                "triage_reasons": triage.triage_reasons,
+                "triage_confidence": triage.triage_confidence,
+                "prompt_sections_used": prompt_metadata["prompt_sections_used"],
+                "prompt_token_budget": prompt_metadata["prompt_token_budget"],
+                "embedding_payload": embedding_payload.model_dump(),
                 "conversation_state": {
                     "missing_fields": [],
                     "collected_fields": [k for k, v in self.context.items() if v not in (None, "", [], {})],
-                    "next_intent": "triage_recommendation" if self.triage.triage_level == 'Severo' else "collect_missing_data",
-                    "loop_guard_triggered": loop_guard_triggered,
+                    "next_intent": "triage_recommendation" if triage.triage_level == "Severo" else "collect_missing_data",
+                    "loop_guard_triggered": False,
                     "questions_selected": questions_selected,
-                    "max_questions_per_turn": self.max_questions_per_turn
-                }
+                    "max_questions_per_turn": self.max_questions_per_turn,
+                },
             }
-        
-        except Exception as e:
-            logging.error(f"Error en la inicialización del chatbot: {e}")
+        except Exception as exc:
+            logger.error("Error en la inicialización del chatbot: %s", exc)
             return {"error": "Ocurrió un problema al procesar la solicitud."}
-    
-    def _extract_symptoms_from_entities(self, entities):
-        """Extract symptoms from medical entities"""
-        symptoms = []
-        if not entities:
-            return symptoms
-            
-        for entity in entities:
-            if isinstance(entity, dict):
-                # Check if it's a symptom-related entity
-                if entity.get('Category') == 'MEDICAL_CONDITION' or entity.get('Type') == 'DX_NAME':
-                    symptoms.append(entity.get('Text', '').lower())
-                elif entity.get('Category') == 'SYMPTOM':
-                    symptoms.append(entity.get('Text', '').lower())
-        
-        return symptoms
-    
-    def _extract_pain_level_from_context(self):
-        """Extract pain from current message; keep previous value when no new evidence."""
-        explicit_pain = extract_pain_scale(self.user_input)
-        if explicit_pain is not None:
-            return explicit_pain
 
+    def _build_non_clinical_response(self, analysis: MessageAnalysis, facts_summary: FactsSummary | None = None):
+        return {
+            "context": self.user_data or {},
+            "triaje_level": "info",
+            "entities": [],
+            "structured_facts": {
+                "facts": [],
+                "facts_summary": (facts_summary or FactsSummary()).model_dump(),
+                "discarded_segments": [self.user_input] if analysis.analysis_type != "greeting" else [],
+            },
+            "facts_summary": (facts_summary or FactsSummary()).model_dump(),
+            "response": generate_response(self.user_input),
+            "symptoms": [],
+            "symptoms_pattern": {},
+            "pain_scale": 0,
+            "missing_questions": [],
+            "analysis_type": analysis.analysis_type,
+            "triage_reasons": [],
+            "triage_confidence": 0.0,
+            "prompt_sections_used": [],
+            "prompt_token_budget": {
+                "target_max_input_tokens": 1200,
+                "used_estimate": 0,
+            },
+            "embedding_payload": {
+                "skipped": True,
+                "reason": "low_clinical_signal",
+                "signal_score": analysis.clinical_signal_score,
+                "embedding_target": "clinical_hybrid",
+                "embedding_text": "",
+                "facts_used": [],
+            },
+            "conversation_state": {
+                "missing_fields": [],
+                "collected_fields": list((self.user_data or {}).keys()),
+                "next_intent": "collect_initial_symptoms",
+                "loop_guard_triggered": False,
+                "questions_selected": [],
+                "max_questions_per_turn": self.max_questions_per_turn,
+            },
+        }
+
+    def _extract_pain_level_from_summary(self, facts_summary: FactsSummary) -> int:
+        if facts_summary.pain_scale is not None:
+            return int(facts_summary.pain_scale)
+        explicit = extract_pain_scale(self.user_input)
+        if explicit is not None:
+            return explicit
         previous_candidates = [
             self.existing_context.get("pain_level_reported"),
             self.existing_context.get("pain_level"),
             self.existing_context.get("pain_scale"),
         ]
-        if isinstance(self.existing_context.get("hybrid_state"), dict):
-            previous_candidates.append(self.existing_context["hybrid_state"].get("last_pain_scale"))
-
         for value in previous_candidates:
             if isinstance(value, int) and 0 <= value <= 10:
                 return value
-
-        # Do not assume pain intensity without explicit evidence.
         return 0
 
-    def _is_first_clinical_turn(self):
-        if not self.conversation_id:
-            return True
-        if not (self.user_id and self.conversation_id):
-            return False
-        recent = self.context_service.get_recent_window(self.user_id, self.conversation_id, n=1)
-        return len(recent) == 0
-
-    def _build_question_queue(self, missing_question_meta, missing_questions):
-        if missing_question_meta:
-            ordered = sorted(missing_question_meta, key=lambda item: item.get("priority", 99))
-            return [item.get("question") for item in ordered if item.get("question")]
-        return list(missing_questions or [])
-
-    def _select_questions_for_turn(self, question_queue, is_first_turn):
-        queue = list(dict.fromkeys(question_queue or []))
-        if not queue:
-            return []
-        if is_first_turn:
-            return queue[:1]
-        if len(queue) <= self.max_questions_per_turn:
-            return queue
-        return queue[:self.max_questions_per_turn]
-
-    def _compose_turn_response(self, base_response, questions_selected, is_first_turn, loop_guard_triggered):
-        if not questions_selected:
-            return base_response
-
-        if loop_guard_triggered:
-            header = "Vamos paso a paso para completar el triaje."
-        elif is_first_turn:
-            header = "Te ayudaré con unas preguntas cortas para orientarte mejor."
-        else:
-            header = "Gracias por la información. Para continuar:"
-
-        if len(questions_selected) == 1:
-            return f"{header}\n{questions_selected[0]}"
-        return f"{header}\n1. {questions_selected[0]}\n2. {questions_selected[1]}"
+    def _build_minimal_prompt_context(self, *, facts_summary: FactsSummary, triage, questions_selected: list[str]):
+        prompt_context = {
+            **self.context,
+            "user_input": self.user_input,
+            "postgres_context": self.postgres_context,
+            "facts_summary": facts_summary.model_dump(),
+            "questions_selected": questions_selected[:2],
+            "triage_level": triage.triage_level,
+        }
+        if self.context_service and self.user_id and self.conversation_id:
+            prompt_context.update(
+                self.context_service.build_prompt_context(
+                    user_id=self.user_id,
+                    conversation_id=self.conversation_id,
+                    user_input=self.user_input,
+                    current_context=self.context,
+                    missing_questions=[],
+                    questions_selected=questions_selected,
+                    postgres_context=self.postgres_context,
+                    triage_level=triage.triage_level,
+                    facts_summary=facts_summary,
+                )
+            )
+        return prompt_context

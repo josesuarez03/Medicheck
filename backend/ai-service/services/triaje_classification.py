@@ -1,89 +1,147 @@
-import logging
-from typing import List, Dict
-from services.chatbot.input_validate import analyze_message
+from __future__ import annotations
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from services.medical_facts import FactsSummary
+
+
+class TriageResult(BaseModel):
+    triage_level: str = "Leve"
+    triage_reasons: list[str] = Field(default_factory=list)
+    triage_confidence: float = 0.5
+
 
 class TriageClassification:
-    COMMON_SYMPTOMS = {
-        'MUSCULOSKELETAL': ['dolor de espalda', 'dolor de cuello', 'dolor en muñecas', 'tensión muscular', 'dolor articular'],
-        'VISION_RELATED': ['fatiga visual', 'visión borrosa', 'ojos secos', 'dolor de cabeza', 'sensibilidad a la luz'],
-        'STRESS_RELATED': ['ansiedad', 'insomnio', 'fatiga', 'irritabilidad', 'dificultad para concentrarse'],
-        'RESPIRATORY': ['tos', 'congestión nasal', 'dolor de garganta', 'dificultad para respirar', 'estornudos frecuentes'],
-        'DIGESTIVE': ['dolor estomacal', 'náuseas', 'acidez', 'pérdida de apetito', 'malestar digestivo']
-    }
-
     EMERGENCY_MESSAGES = {
-        'general': "Por favor, acuda inmediatamente al centro médico más cercano. Sus síntomas requieren atención médica urgente.",
-        'workplace': "Notifique a su supervisor y diríjase al servicio médico de la empresa o al centro médico más cercano.",
-        'educational': "Diríjase inmediatamente al servicio médico de la institución o al centro médico más cercano."
+        "general": "Tus síntomas podrían requerir valoración urgente. Busca atención médica inmediata.",
+        "workplace": "Tus síntomas requieren valoración urgente. Acude al servicio médico de empresa o a urgencias.",
+        "educational": "Tus síntomas requieren valoración urgente. Acude al servicio médico del centro o a urgencias.",
     }
 
-    TRIAGE_CRITERIA = {
-        'Severo': {
-            'pain_threshold': 8,
-            'urgent_symptoms': ['dificultad para respirar severa', 'dolor en el pecho', 'pérdida de consciencia', 'traumatismo grave', 'sangrado abundante', 'quemadura grave', 'dolor intenso persistente']
-        },
-        'Moderado': {
-            'pain_threshold': 5,
-            'concerning_symptoms': ['fiebre alta', 'vómitos persistentes', 'deshidratación', 'mareos intensos', 'dolor moderado a severo']
-        },
-        'Leve': {
-            'pain_threshold': 3,
-            'minor_symptoms': ['fatiga leve', 'dolor de cabeza leve', 'malestar general', 'síntomas de resfriado', 'molestias musculares leves']
-        }
-    }
-
-    def __init__(self, symptoms: List[str], pain_level: int, environment: str = 'general'):
+    def __init__(self, symptoms: list[str], pain_level: int, environment: str = "general"):
+        summary = FactsSummary(symptoms=symptoms, pain_scale=pain_level)
+        result = self._classify(summary, existing_context={})
         self.symptoms = symptoms
         self.pain_level = pain_level
         self.environment = environment
-        self.triage_level = self.classify_triage()
-        logging.info(f'Triage classification initialized with symptoms: {self.symptoms}, pain level: {self.pain_level}, environment: {self.environment}')
+        self.triage_level = result.triage_level
+        self.triage_reasons = result.triage_reasons
+        self.triage_confidence = result.triage_confidence
+
+    @classmethod
+    def from_facts(cls, facts_summary: FactsSummary, existing_context: dict[str, Any] | None = None, environment: str = "general") -> "TriageClassification":
+        instance = cls(
+            symptoms=list(facts_summary.symptoms),
+            pain_level=int(facts_summary.pain_scale or 0),
+            environment=environment,
+        )
+        result = cls._classify(facts_summary, existing_context or {})
+        instance.triage_level = result.triage_level
+        instance.triage_reasons = result.triage_reasons
+        instance.triage_confidence = result.triage_confidence
+        return instance
+
+    @staticmethod
+    def _classify(facts_summary: FactsSummary, existing_context: dict[str, Any]) -> TriageResult:
+        reasons: list[str] = []
+        score = 0
+        pain = int(facts_summary.pain_scale or existing_context.get("pain_level_reported") or 0)
+        duration = (facts_summary.duration or "").lower()
+        red_flags = {item.lower() for item in facts_summary.red_flags}
+        symptoms = {item.lower() for item in facts_summary.symptoms + facts_summary.chief_complaints}
+        functional = facts_summary.functional_impact
+        history = facts_summary.history + facts_summary.risk_factors
+
+        major_red_flags = {
+            "dolor de pecho",
+            "dificultad para respirar",
+            "disnea",
+            "desmayo",
+            "convulsiones",
+            "sangrado",
+            "suicidio",
+            "autolesion",
+        }
+        if red_flags & major_red_flags:
+            reasons.extend(sorted(f"red_flag:{flag}" for flag in red_flags & major_red_flags))
+            return TriageResult(triage_level="Severo", triage_reasons=reasons, triage_confidence=0.92)
+
+        if ("dolor toracico" in symptoms or "dolor de pecho" in symptoms) and ("disnea" in symptoms or "dificultad para respirar" in red_flags):
+            reasons.extend(["combo_chest_pain", "combo_dyspnea"])
+            return TriageResult(triage_level="Severo", triage_reasons=reasons, triage_confidence=0.9)
+        if ("vomito" in symptoms or "vomitos persistentes" in symptoms) and ("deshidratacion" in symptoms or "deshidratacion" in red_flags):
+            reasons.extend(["combo_vomiting", "combo_dehydration"])
+            return TriageResult(triage_level="Severo", triage_reasons=reasons, triage_confidence=0.86)
+        if ("debilidad" in red_flags or "desmayo" in red_flags) and pain >= 8:
+            reasons.extend(["neurologic_red_flag", f"pain_scale_{pain}"])
+            return TriageResult(triage_level="Severo", triage_reasons=reasons, triage_confidence=0.88)
+
+        if pain >= 7:
+            score += 3
+            reasons.append(f"pain_scale_{pain}")
+        elif pain >= 4:
+            score += 1
+            reasons.append(f"pain_scale_{pain}")
+
+        if duration and any(token in duration for token in ("hace", "desde", "dias", "seman", "mes")):
+            score += 1
+            reasons.append("progressive_duration")
+
+        if functional:
+            score += 2
+            reasons.append("functional_impact_present")
+
+        if len(symptoms) >= 3:
+            score += 2
+            reasons.append("multiple_systemic_symptoms")
+
+        if history:
+            score += 1
+            reasons.append("risk_history_present")
+
+        if score >= 7:
+            level = "Severo"
+        elif score >= 4:
+            level = "Moderado"
+        else:
+            level = "Leve"
+        confidence = min(0.9, 0.45 + (score * 0.06))
+        return TriageResult(triage_level=level, triage_reasons=reasons, triage_confidence=round(confidence, 2))
 
     def classify_triage(self) -> str:
-        """Clasifica el nivel de triaje según los síntomas y el nivel de dolor."""
-        for level, criteria in self.TRIAGE_CRITERIA.items():
-            if self.pain_level >= criteria['pain_threshold']:
-                logging.info(f'Triage level classified as {level} based on pain threshold.')
-                return level
-            if any(symptom in criteria.get('urgent_symptoms', []) for symptom in self.symptoms):
-                logging.warning('Urgent symptoms detected, classifying as Severo.')
-                return 'Severo'
-            if any(symptom in criteria.get('concerning_symptoms', []) for symptom in self.symptoms):
-                logging.info('Concerning symptoms detected, classifying as Moderado.')
-                return 'Moderado'
-            if any(symptom in criteria.get('minor_symptoms', []) for symptom in self.symptoms):
-                logging.info('Minor symptoms detected, classifying as Leve.')
-                return 'Leve'
-        logging.info('Defaulting to Leve classification.')
-        return 'Leve'
+        return self.triage_level
 
     def handle_severe_case(self, message: str) -> str:
-        """Maneja casos severos proporcionando instrucciones de emergencia."""
-        logging.warning(f'Handling severe case for message: {message}')
-        if analyze_message(message) == "diagnosis_restriction":
-            logging.warning('Diagnosis restriction detected.')
-            return (f"{self.EMERGENCY_MESSAGES[self.environment]}\n"
-                    "No puedo proporcionar un diagnóstico. Es importante que un profesional médico evalúe su condición inmediatamente.")
-        return self.EMERGENCY_MESSAGES[self.environment]
+        _ = message
+        return self.EMERGENCY_MESSAGES.get(self.environment, self.EMERGENCY_MESSAGES["general"])
 
     @staticmethod
-    def get_workplace_symptoms(category: str = None) -> List[str]:
-        """Obtiene lista de síntomas comunes en entornos laborales/educativos."""
-        logging.info(f'Retrieving workplace symptoms for category: {category}')
-        if category and category in TriageClassification.COMMON_SYMPTOMS:
-            return TriageClassification.COMMON_SYMPTOMS[category]
-        return [symptom for symptoms in TriageClassification.COMMON_SYMPTOMS.values() for symptom in symptoms]
+    def get_workplace_symptoms(category: str = None) -> list[str]:
+        lookup = {
+            "RESPIRATORY": ["tos", "disnea", "dolor de garganta"],
+            "DIGESTIVE": ["nauseas", "vomitos", "dolor abdominal"],
+            "NEUROLOGICAL": ["cefalea", "mareo", "desmayo"],
+        }
+        if category and category in lookup:
+            return lookup[category]
+        values: list[str] = []
+        for symptoms in lookup.values():
+            values.extend(symptoms)
+        return values
 
     @staticmethod
-    def analyze_symptom_pattern(symptoms: List[str]) -> Dict[str, int]:
-        """Analiza el patrón de síntomas para identificar categorías predominantes."""
-        logging.info(f'Analyzing symptom pattern for symptoms: {symptoms}')
-        pattern = {category: 0 for category in TriageClassification.COMMON_SYMPTOMS.keys()}
+    def analyze_symptom_pattern(symptoms: list[str]) -> dict[str, int]:
+        pattern = {"RESPIRATORY": 0, "DIGESTIVE": 0, "NEUROLOGICAL": 0, "GENERAL": 0}
         for symptom in symptoms:
-            for category, category_symptoms in TriageClassification.COMMON_SYMPTOMS.items():
-                if symptom in category_symptoms:
-                    pattern[category] += 1
-        logging.info(f'Symptom pattern analysis result: {pattern}')
+            lowered = symptom.lower()
+            if any(item in lowered for item in ("tos", "disnea", "garganta")):
+                pattern["RESPIRATORY"] += 1
+            elif any(item in lowered for item in ("nause", "vomit", "abdominal")):
+                pattern["DIGESTIVE"] += 1
+            elif any(item in lowered for item in ("mare", "cabeza", "desmayo")):
+                pattern["NEUROLOGICAL"] += 1
+            else:
+                pattern["GENERAL"] += 1
         return pattern
