@@ -1743,3 +1743,6 @@ Además, el sistema no está componiendo correctamente el contexto que necesita 
 - Depende de `#43` para partir de una ETL estable.
 - Se coordina con `#44` porque comparte endurecimiento del flujo paciente y del control de relanzamiento ETL.
 - Alimenta funcionalmente a `#29` porque establece una base correcta de memoria longitudinal entre conversaciones.
+
+
+Mas adelante se podria integrar gRPC para la comunicación entre servicios.
