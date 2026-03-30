@@ -199,11 +199,12 @@ CACHE_REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
 CACHE_REDIS_USE_TLS = os.getenv('REDIS_USE_TLS', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 CACHE_REDIS_SCHEME = 'rediss' if CACHE_REDIS_USE_TLS else 'redis'
 CACHE_REDIS_AUTH = f":{CACHE_REDIS_PASSWORD}@" if CACHE_REDIS_PASSWORD else ""
+CACHE_REDIS_DB = os.getenv('REDIS_DB_CACHE', os.getenv('REDIS_DB1', '1'))
 
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': f"{CACHE_REDIS_SCHEME}://{CACHE_REDIS_AUTH}{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB1')}",
+        'LOCATION': f"{CACHE_REDIS_SCHEME}://{CACHE_REDIS_AUTH}{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{CACHE_REDIS_DB}",
         'OPTIONS': {
             'ssl_cert_reqs': os.getenv('REDIS_SSL_CERT_REQS', 'required'),
         } if CACHE_REDIS_USE_TLS else {},

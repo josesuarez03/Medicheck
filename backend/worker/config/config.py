@@ -57,7 +57,13 @@ class Config:
     REDIS_USE_TLS = os.getenv("REDIS_USE_TLS", "False").strip().lower() in {"1", "true", "yes", "on"}
     REDIS_SSL_CERT_REQS = os.getenv("REDIS_SSL_CERT_REQS", "required").strip().lower()
     REDIS_DB = _as_int(os.getenv("REDIS_DB"), 0)
-    CHAT_REDIS_DB_CONTEXT = _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"), 2)
+    REDIS_DB_CONVERSATIONS = _as_int(os.getenv("REDIS_DB_CONVERSATIONS"), REDIS_DB)
+    REDIS_DB_CONTEXT = _as_int(
+        os.getenv("REDIS_DB_CONTEXT"),
+        _as_int(os.getenv("CHAT_REDIS_DB_CONTEXT"), 2),
+    )
+    REDIS_DB_WORKER = _as_int(os.getenv("REDIS_DB_WORKER"), 3)
+    CHAT_REDIS_DB_CONTEXT = REDIS_DB_CONTEXT
     CHAT_CONTEXT_TTL_SECONDS = _as_int(os.getenv("CHAT_CONTEXT_TTL_SECONDS"), 60 * 60 * 24)
     CHAT_CONTEXT_WINDOW_N = _as_int(os.getenv("CHAT_CONTEXT_WINDOW_N"), 8)
     CHAT_CONTEXT_TOP_K = _as_int(os.getenv("CHAT_CONTEXT_TOP_K"), 5)
@@ -77,6 +83,19 @@ class Config:
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', 'app.log')
 
+    RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672//")
+    CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", RABBITMQ_URL)
+    CELERY_RESULT_BACKEND = os.getenv(
+        "CELERY_RESULT_BACKEND",
+        f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB_WORKER}" if REDIS_PASSWORD and REDIS_HOST else "",
+    )
+    ETL_QUEUE_NAME = os.getenv("ETL_QUEUE", "etl_queue")
+    CHAT_QUEUE_NAME = os.getenv("CHAT_QUEUE", "chat_queue")
+    ETL_DISPATCH_MODE = os.getenv("ETL_DISPATCH_MODE", "celery").strip().lower()
+    ETL_LOCK_TTL_SECONDS = max(30, _as_int(os.getenv("ETL_LOCK_TTL_SECONDS"), 300))
+    AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:5001").rstrip("/")
+    AI_SERVICE_CHAT_PATH = os.getenv("AI_SERVICE_CHAT_PATH", "/inference/chat")
+
     @classmethod
     def validate(cls):
         if cls.JWT_SECRET_ENV and (
@@ -92,6 +111,7 @@ class Config:
             "REDIS_PASSWORD": cls.REDIS_PASSWORD,
             "REDIS_HOST": cls.REDIS_HOST,
             "REDIS_PORT": cls.REDIS_PORT,
+            "CELERY_BROKER_URL": cls.CELERY_BROKER_URL,
             "SECRET_KEY": cls.SECRET_KEY,
             "MONGO_ENCRYPTION_KEY": cls.MONGO_ENCRYPTION_KEY,
             "JWT_ALGORITHM": cls.JWT_ALGORITHM,

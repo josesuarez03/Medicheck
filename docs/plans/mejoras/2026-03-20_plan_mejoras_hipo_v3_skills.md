@@ -13,6 +13,8 @@
 
 ### Actualización 2026-03-30
 
+- `#17`: `✅ Cerrada`
+- `#21`: `✅ Cerrada`
 - `#27`: `✅ Cerrada`
 - `#40`: `🟡 Muy avanzada`
 - `#45`: `🟡 Implementada en código / pendiente validación operativa`
@@ -24,12 +26,14 @@
 - **Ciclo actual:** estabilización y securización de la arquitectura existente `flask-services` + `django_services`.
 - **Iteración actual recuperada:** cierre de Fase 2 y apertura del bloque de estabilización funcional centrado en flujo paciente, ETL y preservación de contexto clínico.
 - **Siguiente foco operativo:** cierre operativo de `#45`, estabilización restante de Fase 3 y, a continuación, Fase 4 (calidad clínica y experiencia).
-- **Fuera de alcance del ciclo actual:** `#17`, `#18`, `#19`, `#20`, `#39`, `#41`, `#42` quedan pospuestas a la Fase 6.
+- **Fuera de alcance del ciclo actual:** `#18`, `#19`, `#20`, `#39`, `#41`, `#42` quedan pospuestas a la Fase 6.
 - **Reclasificación funcional:** `#29`, `#30` y `#35` dejan de tratarse como bloqueantes iniciales y pasan a fases posteriores de calidad funcional.
 - **Nueva corrección pendiente:** `#44` entra en Fase 3 para estabilizar el flujo paciente tras cambio de contraseña, endurecer el renderizado del historial y evitar relanzamientos espurios de ETL en el mismo contexto.
 - **Nueva corrección muy avanzada:** `#45` queda implementada en código a nivel de modelo clínico canónico, RAG de usuario, memoria episódica y push estable Django → ai-service, pendiente validación operativa completa (migraciones, backfill y pruebas E2E).
 - **Adelanto fuera de fase:** `#40` deja de estar totalmente pospuesta; el `ai-service` queda implementado en gran parte y ya absorbe optimización de prompt, embeddings clínicos, retrieval router y contexto longitudinal.
 - **Mejora cerrada por adelantado:** `#27` se da por resuelta en `ai-service` al haberse sustituido el prompt largo por prompt compacto con presupuesto de tokens y contexto mínimo.
+- **Cierre de arquitectura de colas:** `#17` queda resuelta en código con `RabbitMQ` activo en `docker-compose.yml`, workers `Celery` separados para `chat_queue` y `etl_queue`, `worker/celery_app.py`, tareas dedicadas para chat/ETL y `Flower` para observabilidad básica.
+- **Cierre de segmentación Redis:** `#21` queda resuelta en código con segmentación explícita por función (`REDIS_DB_CONVERSATIONS`, `REDIS_DB_CONTEXT`, `REDIS_DB_WORKER`, `REDIS_DB_CACHE`) en `worker`, `ai-service`, Django y `docker-compose.yml`.
 
 
 
@@ -55,11 +59,11 @@
 | 14 | Rectificación de detect_finalization — ETL prematura | Flask | 🟡 IMPORTANTE |
 | 15 | Corrección N+1 queries en PatientSerializer | Django | 🟡 IMPORTANTE |
 | 16 | Reducir ACCESS_TOKEN_LIFETIME de JWT a 15 minutos | Django | ✅ RESUELTO · Fase 1 |
-| 17 | Worker Celery (chat) + Worker ETL con RabbitMQ | Nuevo | 🟢 NUEVO |
+| 17 | Worker Celery (chat) + Worker ETL con RabbitMQ | Nuevo | ✅ RESUELTO · fuera de fase |
 | 18 | Flask como gateway WebSocket ligero | Flask | 🟢 NUEVO |
 | 19 | Endpoint de reintento manual de ETL vía RabbitMQ | Flask | 🟢 NUEVO |
 | 20 | Caché Redis de resultados ETL | ETL Worker | 🟢 NUEVO |
-| 21 | Reorganización DBs Redis por función | Ambos | ⚪ MEJORA |
+| 21 | Reorganización DBs Redis por función | Ambos | ✅ RESUELTO · Fase 3 |
 | 22 | Content-Security-Policy en Nginx | Nginx | ✅ RESUELTO · Fase 1 |
 | 23 | Ampliar casos clínicos del sistema experto | Flask | 🟡 IMPORTANTE |
 | 24 | Token WebSocket en primer mensaje en lugar de query param | Flask | ✅ RESUELTO · Fase 1 |
@@ -118,7 +122,7 @@
 
 - **Estado:** En curso
 - **Objetivo:** estabilizar el flujo conversacional y reducir fallos funcionales
-- **Incluye:** `#14`, `#15`, `#21`, `#31`, `#35`, `#44`, `#45`
+- **Incluye:** `#14`, `#15`, `#31`, `#35`, `#44`, `#45`
 
 ### Fase 4 — Calidad clínica y experiencia
 
@@ -136,7 +140,7 @@
 
 - **Estado:** Pospuesta
 - **Objetivo:** rediseño arquitectónico solo cuando el sistema actual esté estable y existan métricas que justifiquen la partición
-- **Incluye:** `#17`, `#18`, `#19`, `#20`, `#39`, `#41`, `#42`
+- **Incluye:** `#18`, `#19`, `#20`, `#39`, `#41`, `#42`
 
 ### Dependencias críticas entre mejoras
 
@@ -468,6 +472,8 @@ verificar que no hay regresiones.
 
 ### #17 — Worker Celery (chat) + Worker ETL con RabbitMQ
 
+**Estado actual:** ✅ Cerrada · implementada en código y alineada con la arquitectura propuesta
+
 **Servicio:** Nuevo | **Prioridad:** 🟢 NUEVO
 
 **Problema:** Flask actualmente bloquea un hilo por cada llamada a Bedrock (1–3 segundos). Con múltiples usuarios concurrentes los hilos se agotan. Además, la ETL escribe datos clínicos críticos en PostgreSQL: si se pierde una tarea, el dato médico desaparece para siempre.
@@ -651,6 +657,8 @@ ETL:
 ## Bloque 4 — Experiencia, calidad y rendimiento
 
 ### #21 — Reorganización DBs Redis por función
+
+**Estado actual:** ✅ Cerrada · segmentación aplicada en código
 
 **Servicio:** Ambos | **Prioridad:** ⚪ MEJORA
 

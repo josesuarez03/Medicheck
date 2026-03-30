@@ -8,6 +8,8 @@ from collections import deque
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 
+from config.config import Config
+from data.connect import worker_redis_client
 from models.conversation import ConversationalDatasetManager
 from services.medical_data import MedicalDataProcessor
 from services.send_api import send_data_to_django
@@ -40,36 +42,120 @@ def _update_etl_state(user_id: str, conversation_id: str, etl_state: Dict[str, A
     manager.update_conversation_etl_state(user_id, conversation_id, etl_state)
 
 
+def _etl_lock_key(user_id: str, conversation_id: str) -> str:
+    return f"worker:etl:lock:{user_id}:{conversation_id}"
+
+
+def _acquire_etl_lock(user_id: str, conversation_id: str, run_id: str) -> bool:
+    return bool(
+        worker_redis_client.set(
+            _etl_lock_key(user_id, conversation_id),
+            run_id,
+            nx=True,
+            ex=Config.ETL_LOCK_TTL_SECONDS,
+        )
+    )
+
+
+def _release_etl_lock(user_id: str, conversation_id: str, run_id: str) -> None:
+    key = _etl_lock_key(user_id, conversation_id)
+    try:
+        current = worker_redis_client.get(key)
+        if current == run_id:
+            worker_redis_client.delete(key)
+    except Exception as exc:
+        logger.warning("No se pudo liberar lock ETL %s: %s", key, str(exc))
+
+
+def _resolve_dispatch_mode() -> str:
+    mode = (Config.ETL_DISPATCH_MODE or "celery").strip().lower()
+    if mode not in {"celery", "threading"}:
+        return "celery"
+    return mode
+
+
+def _dispatch_via_celery(task: Dict[str, Any]) -> None:
+    from celery_app import celery_app
+
+    celery_app.send_task(
+        "tasks.etl_tasks.run_etl_for_conversation",
+        kwargs={"payload": task},
+        queue=Config.ETL_QUEUE_NAME,
+    )
+
+
+def _dispatch_via_threading(task: Dict[str, Any]) -> None:
+    queue_key = _conversation_key(task["user_id"], task["conversation_id"])
+    with _REGISTRY_LOCK:
+        queue = _CONVERSATION_QUEUES.setdefault(queue_key, deque())
+        queue.append(task)
+        should_start_worker = queue_key not in _ACTIVE_WORKERS
+        if should_start_worker:
+            _ACTIVE_WORKERS.add(queue_key)
+
+    if should_start_worker:
+        worker_name = f"etl-worker-{abs(hash(queue_key)) % 100000}"
+        threading.Thread(
+            target=_worker_for_conversation,
+            args=(queue_key,),
+            daemon=True,
+            name=worker_name,
+        ).start()
+
+
 def execute_etl_once(
     user_id: str,
     conversation_id: str,
     jwt_token: Optional[str] = None,
     django_api_url: Optional[str] = None,
+    run_id: Optional[str] = None,
+    reasons: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    processor = MedicalDataProcessor(user_id=user_id, conversation_id=conversation_id)
-    medical_data = processor.process_medical_data(user_id, conversation_id)
-    if not medical_data or "error" in medical_data:
-        error_msg = (medical_data or {}).get("error", "No se pudo procesar la conversación.")
+    resolved_run_id = run_id or str(uuid.uuid4())
+    resolved_reasons = list(dict.fromkeys(reasons or []))
+    if not _acquire_etl_lock(user_id, conversation_id, resolved_run_id):
+        _log_etl_event(
+            "etl_skipped_already_running",
+            user_id=user_id,
+            conversation_id=conversation_id,
+            run_id=resolved_run_id,
+            reasons=resolved_reasons,
+        )
         return {
             "success": False,
-            "error": error_msg,
-            "medical_data": medical_data,
+            "skipped": True,
+            "error": "ETL ya en ejecución para esta conversación.",
+            "medical_data": None,
             "django_response": None,
         }
 
-    django_response = send_data_to_django(
-        user_id,
-        medical_data,
-        jwt_token=jwt_token,
-        base_url=django_api_url,
-    )
-    has_error = isinstance(django_response, dict) and bool(django_response.get("error"))
-    return {
-        "success": not has_error,
-        "error": django_response.get("error") if has_error else "",
-        "medical_data": medical_data,
-        "django_response": django_response,
-    }
+    processor = MedicalDataProcessor(user_id=user_id, conversation_id=conversation_id)
+    try:
+        medical_data = processor.process_medical_data(user_id, conversation_id)
+        if not medical_data or "error" in medical_data:
+            error_msg = (medical_data or {}).get("error", "No se pudo procesar la conversación.")
+            return {
+                "success": False,
+                "error": error_msg,
+                "medical_data": medical_data,
+                "django_response": None,
+            }
+
+        django_response = send_data_to_django(
+            user_id,
+            medical_data,
+            jwt_token=jwt_token,
+            base_url=django_api_url,
+        )
+        has_error = isinstance(django_response, dict) and bool(django_response.get("error"))
+        return {
+            "success": not has_error,
+            "error": django_response.get("error") if has_error else "",
+            "medical_data": medical_data,
+            "django_response": django_response,
+        }
+    finally:
+        _release_etl_lock(user_id, conversation_id, resolved_run_id)
 
 
 def _execute_task_with_retries(
@@ -130,6 +216,8 @@ def _execute_task_with_retries(
             conversation_id=conversation_id,
             jwt_token=jwt_token,
             django_api_url=django_api_url,
+            run_id=run_id,
+            reasons=reasons,
         )
         if last_result.get("success"):
             success_time = _utc_now_iso()
@@ -154,6 +242,8 @@ def _execute_task_with_retries(
                 reasons=reasons,
                 attempt=attempt,
             )
+            return last_result
+        if last_result.get("skipped"):
             return last_result
 
     fail_time = _utc_now_iso()
@@ -256,7 +346,6 @@ def enqueue_etl_run(
         reasons=reasons,
     )
 
-    queue_key = _conversation_key(user_id, conversation_id)
     task = {
         "user_id": user_id,
         "conversation_id": conversation_id,
@@ -265,21 +354,15 @@ def enqueue_etl_run(
         "reasons": reasons,
         "django_api_url": django_api_url,
     }
-    with _REGISTRY_LOCK:
-        queue = _CONVERSATION_QUEUES.setdefault(queue_key, deque())
-        queue.append(task)
-        should_start_worker = queue_key not in _ACTIVE_WORKERS
-        if should_start_worker:
-            _ACTIVE_WORKERS.add(queue_key)
+    dispatch_mode = _resolve_dispatch_mode()
+    if dispatch_mode == "celery":
+        try:
+            _dispatch_via_celery(task)
+            return
+        except Exception as exc:
+            logger.warning("Fallo al publicar ETL en Celery, uso fallback threading: %s", str(exc))
 
-    if should_start_worker:
-        worker_name = f"etl-worker-{abs(hash(queue_key)) % 100000}"
-        threading.Thread(
-            target=_worker_for_conversation,
-            args=(queue_key,),
-            daemon=True,
-            name=worker_name,
-        ).start()
+    _dispatch_via_threading(task)
 
 
 def clear_inactivity_timer(user_id: str, conversation_id: str) -> None:
