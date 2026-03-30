@@ -524,3 +524,15 @@ pass_app_js.txt
 /images
 .venv.flask
 .venv.django
+plan_mejoras_hipo (1).md
+*.ini
+.agents
+skills-lock.json
+/docs/images
+/docs/architecture
+/docs/academic
+/backend/ai-service
+/backend/worker
+/backend/gateway
+/backend/expert-service
+modularization_scaffold.md
