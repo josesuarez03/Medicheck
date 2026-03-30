@@ -278,6 +278,7 @@ def extract_with_comprehend(text: str) -> list[MedicalFact]:
 def _extract_with_rules_only(text: str) -> list[MedicalFact]:
     facts: list[MedicalFact] = []
     normalized = normalize_clinical_text(text)
+    symptoms = ("fiebre", "mareo", "tos", "nausea", "vomito", "disnea", "palpitaciones", "ansiedad")
     pain_scale = extract_pain_scale(text)
     if pain_scale is not None:
         facts.append(_fact(text=str(pain_scale), category="SEVERITY", role="pain_scale", source="rule", confidence=0.8, value=pain_scale, context_text=text))
@@ -286,6 +287,9 @@ def _extract_with_rules_only(text: str) -> list[MedicalFact]:
         facts.append(_fact(text=duration, category="DURATION", role="duration", source="rule", confidence=0.8, context_text=text))
     if "dolor" in normalized:
         facts.append(_fact(text=text, category="SYMPTOM", role="chief_complaint", source="rule", confidence=0.7, context_text=text))
+    for symptom in symptoms:
+        if symptom in normalized:
+            facts.append(_fact(text=symptom, category="SYMPTOM", role="secondary_symptom", source="rule", confidence=0.65, context_text=text))
     for flag in _RED_FLAGS:
         if flag in normalized:
             facts.append(_fact(text=flag, category="RED_FLAG", role="red_flag", source="rule", confidence=0.8, context_text=text))
@@ -331,6 +335,8 @@ def detect_entities(text, context=None):
             all_comprehend_facts.extend(extract_with_comprehend(segment_text))
 
     facts = merge_medical_facts(all_spacy_facts, all_comprehend_facts)
+    if not facts:
+        facts = _extract_with_rules_only(text)
     summary = build_facts_summary(facts)
     context_analysis = detect_medical_context([{"content": text}]) if context else None
     result = ClinicalExtractionResult(

@@ -3,5 +3,7 @@ cryptography
 fastapi
 numpy
 pymongo
+rapidfuzz
 redis[hiredis]
+spacy>=3.7
 uvicorn[standard]

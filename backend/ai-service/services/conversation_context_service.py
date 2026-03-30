@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any
 
 from config.config import Config
-from models.conversation import ConversationalDatasetManager
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import MessageAnalysis
 from services.medical_facts import FactsSummary, MedicalFact
@@ -16,6 +15,11 @@ try:
 except Exception:  # pragma: no cover
     context_redis_client = None
     mongo_db = None
+
+try:
+    from models.conversation import ConversationalDatasetManager
+except Exception:  # pragma: no cover
+    ConversationalDatasetManager = None
 
 
 logger = logging.getLogger(__name__)
@@ -249,6 +253,8 @@ class ConversationContextService:
                 {"_id": 1, "triaje_level": 1, "timestamp": 1, "medical_context": 1},
             ).sort("timestamp", -1).limit(max_conversations)
         )
+        if ConversationalDatasetManager is None:
+            return {"recent_conversations": []}
         dataset_manager = ConversationalDatasetManager()
         compact = []
         for conv in conversations:
