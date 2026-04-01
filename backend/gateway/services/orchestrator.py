@@ -11,8 +11,8 @@ except Exception:  # pragma: no cover
     httpx = None
 
 
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:5001")
-EXPERT_SERVICE_URL = os.getenv("EXPERT_SERVICE_URL", "http://expert-service:5002")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")
+EXPERT_SERVICE_URL = os.getenv("EXPERT_SERVICE_URL")
 
 
 async def forward_to_ai(payload: dict[str, Any], path: str = "/inference/chat") -> dict[str, Any]:

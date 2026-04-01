@@ -10,17 +10,17 @@ import redis
 
 _BROKER_URL = os.getenv(
     "CELERY_BROKER_URL",
-    f"amqp://{os.getenv('RABBITMQ_DEFAULT_USER', 'guest')}:{os.getenv('RABBITMQ_DEFAULT_PASS', 'guest')}@rabbitmq:5672//",
+    f"amqp://{os.getenv('RABBITMQ_DEFAULT_USER')}:{os.getenv('RABBITMQ_DEFAULT_PASS')}@rabbitmq:5672//",
 )
 _RESULT_BACKEND = os.getenv(
     "CELERY_RESULT_BACKEND",
-    f"redis://:{os.getenv('REDIS_PASSWORD', '')}@{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/{os.getenv('REDIS_DB_CELERY_RESULTS', '4')}",
+    f"redis://:{os.getenv('REDIS_PASSWORD')}@{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB_CELERY_RESULTS')}",
 )
 _ETL_QUEUE = os.getenv("ETL_QUEUE", "etl_queue")
-_REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-_REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+_REDIS_HOST = os.getenv("REDIS_HOST")
+_REDIS_PORT = int(os.getenv("REDIS_PORT"))
 _REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
-_REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL", "6"))
+_REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL"))
 _ETL_INACTIVITY_SECONDS = max(30, int(os.getenv("ETL_INACTIVITY_SECONDS", "900")))
 
 celery_client = Celery("gateway_etl_dispatcher", broker=_BROKER_URL, backend=_RESULT_BACKEND or None)

@@ -112,8 +112,6 @@ services:
     depends_on:
       django-api-principal:
         condition: service_healthy
-      flask-api-chat:
-        condition: service_healthy
     ports:
       - "3000:3000"
     volumes:
