@@ -8,6 +8,10 @@ celery_app = Celery(
     "hipo_worker",
     broker=Config.CELERY_BROKER_URL,
     backend=Config.CELERY_RESULT_BACKEND or None,
+    include=[
+        "tasks.chat_tasks",
+        "tasks.etl_tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -27,5 +31,3 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_acks_late=True,
 )
-
-celery_app.autodiscover_tasks(["tasks"])

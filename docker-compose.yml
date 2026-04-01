@@ -163,7 +163,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A celery_app worker -Q ${CHAT_QUEUE:-chat_queue} --concurrency=${CHAT_WORKER_CONCURRENCY:-2} --loglevel=info
+    command: celery -A celery_app:celery_app worker -Q ${CHAT_QUEUE:-chat_queue} --concurrency=${CHAT_WORKER_CONCURRENCY:-2} --loglevel=info
     environment:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
@@ -197,7 +197,7 @@ services:
         condition: service_healthy
       django-api-principal:
         condition: service_healthy
-    command: celery -A celery_app worker -Q ${ETL_QUEUE:-etl_queue} --concurrency=${ETL_WORKER_CONCURRENCY:-2} --loglevel=info
+    command: celery -A celery_app:celery_app worker -Q ${ETL_QUEUE:-etl_queue} --concurrency=${ETL_WORKER_CONCURRENCY:-2} --loglevel=info
     environment:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
