@@ -87,6 +87,7 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'user-agent',
     'x-csrftoken',
+    'x-patient-history-token',
     'x-requested-with',
 ]
 

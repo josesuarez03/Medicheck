@@ -30,6 +30,7 @@ from django.template.loader import render_to_string
 from django.utils.crypto import get_random_string
 from django.core.cache import cache
 import logging
+import requests
 
 from .serializers import (
     UserSerializer, UserProfileSerializer, UserProfileSerializerBasic,
@@ -49,6 +50,7 @@ from common.security.jwt_redis import blacklist_token
 User = get_user_model()
 logger = logging.getLogger(__name__)
 PATIENT_HISTORY_TOKEN_HEADER = "HTTP_X_PATIENT_HISTORY_TOKEN"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 def _request_ip(request):
@@ -60,6 +62,74 @@ def _request_ip(request):
 
 def _get_patient_history_token(request):
     return request.META.get(PATIENT_HISTORY_TOKEN_HEADER) or request.query_params.get("token")
+
+
+def _looks_like_jwt(token: str) -> bool:
+    return token.count(".") == 2
+
+
+def _verify_google_id_token(id_token: str) -> dict | None:
+    client_id = getattr(settings, "SOCIAL_AUTH_GOOGLE_OAUTH2_KEY", "") or ""
+    if not client_id:
+        logger.error("google_oauth_missing_client_id")
+        return None
+    try:
+        response = requests.get(
+            GOOGLE_TOKENINFO_URL,
+            params={"id_token": id_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.warning("google_oauth_tokeninfo_failed error=%s", exc)
+        return None
+
+    if payload.get("aud") != client_id:
+        logger.warning("google_oauth_invalid_audience aud=%s", payload.get("aud"))
+        return None
+    if payload.get("email_verified") not in (True, "true", "True", "1"):
+        logger.warning("google_oauth_email_not_verified email=%s", payload.get("email"))
+        return None
+    return payload
+
+
+def _username_from_google_payload(payload: dict) -> str:
+    email = (payload.get("email") or "").strip().lower()
+    base = email.split("@")[0] if email else f"google_{payload.get('sub', '')[:12]}"
+    candidate = base[:150] or f"google_{get_random_string(12)}"
+    if not User.objects.filter(username=candidate).exists():
+        return candidate
+    return f"{candidate}_{get_random_string(6)}"[:150]
+
+
+def _get_or_create_google_user(payload: dict, requested_tipo: str | None = None):
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return None
+
+    user = User.objects.filter(email=email).first()
+    if user is None:
+        user = User.objects.create_user(
+            username=_username_from_google_payload(payload),
+            email=email,
+            password=None,
+            first_name=(payload.get("given_name") or payload.get("name") or "")[:150],
+            last_name=(payload.get("family_name") or "")[:150],
+            tipo=requested_tipo or "patient",
+        )
+        user.set_unusable_password()
+
+    user.oauth_provider = "google"
+    user.oauth_uid = payload.get("sub") or user.oauth_uid
+    if requested_tipo and not user.tipo:
+        user.tipo = requested_tipo
+    if payload.get("given_name"):
+        user.first_name = payload["given_name"][:150]
+    if payload.get("family_name"):
+        user.last_name = payload["family_name"][:150]
+    user.save()
+    return user
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -148,6 +218,32 @@ class GoogleOAuthLoginView(APIView):
 
         token = serializer.validated_data['token']
         provider = 'google-oauth2'
+        requested_tipo = request.data.get('tipo', 'patient')
+
+        if _looks_like_jwt(token):
+            payload = _verify_google_id_token(token)
+            if not payload:
+                return Response(
+                    {"error": "Token de Google inválido."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user = _get_or_create_google_user(payload, requested_tipo=requested_tipo)
+            if not user:
+                return Response(
+                    {"error": "No se pudo obtener el correo del usuario de Google."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            refresh = RefreshToken.for_user(user)
+            response_data = {
+                'user': UserProfileSerializerBasic(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'is_new_user': False,
+                'profile_complete': user.is_profile_completed
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
 
         try:
             strategy = load_strategy(request)
@@ -166,7 +262,7 @@ class GoogleOAuthLoginView(APIView):
             is_new_user = user.date_joined == user.last_login
 
             if is_new_user and 'tipo' in request.data:
-                user.tipo = request.data.get('tipo', 'patient')
+                user.tipo = requested_tipo
 
             user.save(update_fields=['oauth_provider', 'oauth_uid', 'tipo'])
 
