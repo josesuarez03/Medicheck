@@ -151,7 +151,10 @@ class SecurityViewsTests(TestCase):
         token = token_response.json()["token"]
 
         unauthenticated_client = APIClient()
-        history_response = unauthenticated_client.get("/patients/me/history/", {"token": token})
+        history_response = unauthenticated_client.get(
+            "/patients/me/history/",
+            HTTP_X_PATIENT_HISTORY_TOKEN=token,
+        )
 
         self.assertEqual(history_response.status_code, 200)
         self.assertEqual(history_response.json()["count"], 1)

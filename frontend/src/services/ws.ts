@@ -22,6 +22,7 @@ class SocketIOService {
   private errorListeners: ((message: string) => void)[] = [];
   private url: string;
   private authenticated = false;
+  private authInFlight: Promise<boolean> | null = null;
 
   constructor(url: string) {
     this.url = buildWebSocketUrl(url);
@@ -33,15 +34,12 @@ class SocketIOService {
     }
     if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
 
-    const token = getAccessToken();
     await new Promise<void>((resolve, reject) => {
       this.socket = new WebSocket(this.url);
 
       this.socket.onopen = () => {
         this.authenticated = false;
-        if (token) {
-          this.sendRaw({ type: "authenticate", token });
-        }
+        void this.authenticateSocket();
         resolve();
       };
 
@@ -64,6 +62,38 @@ class SocketIOService {
     this.socket.send(JSON.stringify(payload));
   }
 
+  private async authenticateSocket(forceRefresh = false): Promise<boolean> {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return false;
+    }
+    if (this.authInFlight) {
+      return this.authInFlight;
+    }
+
+    this.authInFlight = (async () => {
+      let token = forceRefresh ? null : getAccessToken();
+      if (!token) {
+        token = await refreshAccessToken();
+      }
+      if (!token) {
+        this.authenticated = false;
+        this.handleIncomingError("La sesión ha expirado. Vuelve a iniciar sesión.");
+        if (this.socket?.readyState === WebSocket.OPEN) {
+          this.socket.close();
+        }
+        return false;
+      }
+      this.sendRaw({ type: "authenticate", token });
+      return true;
+    })();
+
+    try {
+      return await this.authInFlight;
+    } finally {
+      this.authInFlight = null;
+    }
+  }
+
   private async handleIncomingMessage(data: string): Promise<void> {
     let payload: ChatResponsePayload;
     try {
@@ -77,11 +107,14 @@ class SocketIOService {
       return;
     }
 
+    if (payload.event === "connection_pending") {
+      await this.authenticateSocket();
+      return;
+    }
+
     if (payload.event === "auth_required") {
       this.authenticated = false;
-      const refreshedToken = await refreshAccessToken();
-      if (refreshedToken) {
-        this.sendRaw({ type: "authenticate", token: refreshedToken });
+      if (await this.authenticateSocket(true)) {
         return;
       }
       this.handleIncomingError(payload.detail || "Se requiere autenticación.");
@@ -89,6 +122,12 @@ class SocketIOService {
     }
 
     if (payload.event === "auth_error" || payload.event === "auth_timeout" || payload.event === "rate_limit_exceeded") {
+      if (payload.event === "auth_timeout") {
+        this.authenticated = false;
+        if (await this.authenticateSocket(true)) {
+          return;
+        }
+      }
       this.handleIncomingError(payload.detail || payload.message || "Error en comunicación con el asistente");
       return;
     }
@@ -119,9 +158,8 @@ class SocketIOService {
   }
 
   reauthenticate(): void {
-    const token = getAccessToken();
-    if (this.socket?.readyState === WebSocket.OPEN && token) {
-      this.sendRaw({ type: "authenticate", token });
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      void this.authenticateSocket();
     }
   }
 

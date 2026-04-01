@@ -1,11 +1,13 @@
 import asyncio
 import json
+import logging
 import os
 import time
 import uuid
 from contextlib import suppress
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from uvicorn.protocols.utils import ClientDisconnected
 
 from middleware.auth import decode_access_token
 from services.etl_dispatcher import enqueue_etl_dispatch
@@ -14,6 +16,7 @@ from services.ws_session import WebSocketSessionStore
 
 
 router = APIRouter(tags=["websocket"])
+logger = logging.getLogger(__name__)
 
 WS_AUTH_TIMEOUT_SECONDS = int(os.getenv("WS_AUTH_TIMEOUT_SECONDS", "10"))
 WS_WARNING_SECONDS = max(30, int(os.getenv("WS_WARNING_SECONDS", "180")))
@@ -21,7 +24,10 @@ WS_INACTIVITY_TIMEOUT_SECONDS = max(WS_WARNING_SECONDS + 30, int(os.getenv("WS_I
 
 
 async def _send_json(websocket: WebSocket, payload: dict) -> None:
-    await websocket.send_json(payload)
+    try:
+        await websocket.send_json(payload)
+    except (WebSocketDisconnect, ClientDisconnected):
+        raise
 
 
 async def _close_if_unauthenticated(websocket: WebSocket, store: WebSocketSessionStore, connection_id: str) -> None:
@@ -29,15 +35,18 @@ async def _close_if_unauthenticated(websocket: WebSocket, store: WebSocketSessio
     session = store.get_session(connection_id)
     if session.get("authenticated") is True:
         return
-    await _send_json(
-        websocket,
-        {
-            "event": "auth_timeout",
-            "status": "error",
-            "detail": "No se recibió autenticación en los primeros 10 segundos.",
-        },
-    )
-    await websocket.close(code=1008)
+    try:
+        await _send_json(
+            websocket,
+            {
+                "event": "auth_timeout",
+                "status": "error",
+                "detail": f"No se recibió autenticación en los primeros {WS_AUTH_TIMEOUT_SECONDS} segundos.",
+            },
+        )
+        await websocket.close(code=1008)
+    except (WebSocketDisconnect, ClientDisconnected):
+        logger.info("websocket_auth_timeout_disconnected connection_id=%s", connection_id)
 
 
 async def _inactivity_watchdog(websocket: WebSocket, store: WebSocketSessionStore, connection_id: str) -> None:
@@ -56,15 +65,18 @@ async def _inactivity_watchdog(websocket: WebSocket, store: WebSocketSessionStor
 
         if seconds_left <= WS_WARNING_SECONDS and not warning_sent:
             warning_sent = True
-            await _send_json(
-                websocket,
-                {
-                    "event": "session_warning",
-                    "status": "warning",
-                    "seconds_left": seconds_left,
-                    "message": "Se cerrará en 3 min por inactividad. ¿Algo más que añadir?",
-                },
-            )
+            try:
+                await _send_json(
+                    websocket,
+                    {
+                        "event": "session_warning",
+                        "status": "warning",
+                        "seconds_left": seconds_left,
+                        "message": "Se cerrará en 3 min por inactividad. ¿Algo más que añadir?",
+                    },
+                )
+            except (WebSocketDisconnect, ClientDisconnected):
+                return
 
         if seconds_left > WS_WARNING_SECONDS:
             warning_sent = False
@@ -81,17 +93,20 @@ async def _inactivity_watchdog(websocket: WebSocket, store: WebSocketSessionStor
                     jwt_token=jwt_token,
                     reasons=["inactivity_timeout"],
                 )
-            await _send_json(
-                websocket,
-                {
-                    "event": "session_timeout",
-                    "status": "timeout",
-                    "seconds_left": 0,
-                    "message": "La sesión se ha cerrado por inactividad.",
-                    "etl_dispatch": etl_dispatch,
-                },
-            )
-            await websocket.close(code=1001)
+            try:
+                await _send_json(
+                    websocket,
+                    {
+                        "event": "session_timeout",
+                        "status": "timeout",
+                        "seconds_left": 0,
+                        "message": "La sesión se ha cerrado por inactividad.",
+                        "etl_dispatch": etl_dispatch,
+                    },
+                )
+                await websocket.close(code=1001)
+            except (WebSocketDisconnect, ClientDisconnected):
+                return
             return
 
 
@@ -199,7 +214,7 @@ async def chat_ws(websocket: WebSocket) -> None:
                     **result,
                 },
             )
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, ClientDisconnected):
         return
     finally:
         auth_timeout_task.cancel()

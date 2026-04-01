@@ -48,6 +48,7 @@ from common.security.jwt_redis import blacklist_token
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+PATIENT_HISTORY_TOKEN_HEADER = "HTTP_X_PATIENT_HISTORY_TOKEN"
 
 
 def _request_ip(request):
@@ -55,6 +56,10 @@ def _request_ip(request):
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
+
+
+def _get_patient_history_token(request):
+    return request.META.get(PATIENT_HISTORY_TOKEN_HEADER) or request.query_params.get("token")
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -603,7 +608,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = PageNumberPagination  # Añadir paginación
 
     def _patient_id_from_token(self):
-        token = self.request.query_params.get("token")
+        token = _get_patient_history_token(self.request)
         if not token:
             return None
         try:
@@ -778,7 +783,7 @@ class PatientMeHistoryView(generics.ListAPIView):
     pagination_class = PageNumberPagination
 
     def _patient_from_token(self):
-        token = self.request.query_params.get("token")
+        token = _get_patient_history_token(self.request)
         if not token:
             return None
         try:
