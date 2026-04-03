@@ -14,6 +14,7 @@ from services.conversation_context_service import ConversationContextService
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import analyze_message
 from services.medical_facts import FactsSummary, MedicalFact
+from services.vector_store import VectorStore
 from models.conversation import ConversationalDatasetManager
 from config.config import Config
 
@@ -56,11 +57,14 @@ def _is_valid_internal_request(payload: dict[str, Any], request_timestamp: str |
 
 @router.get("/health")
 async def health() -> dict[str, str]:
+    vector_store_status = VectorStore().status()
     return {
         "bedrock": "configured",
         "entities": "available",
         "service": "ai-service",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "vector_store_enabled": "true" if vector_store_status["enabled"] else "false",
+        "vector_store_schema_ready": "true" if vector_store_status["schema_ready"] else "false",
     }
 
 

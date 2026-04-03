@@ -127,6 +127,25 @@ class VectorStore:
             )
             self.__class__._schema_ready = True
 
+    def ensure_ready(self) -> bool:
+        if not self.enabled:
+            logger.info("Vector store disabled: missing Postgres configuration.")
+            return False
+        try:
+            with self._connect():
+                pass
+        except Exception as exc:
+            logger.warning("Vector store bootstrap failed: %s", exc)
+            return False
+        logger.info("Vector store schema ready.")
+        return True
+
+    def status(self) -> dict[str, bool]:
+        return {
+            "enabled": self.enabled,
+            "schema_ready": self.__class__._schema_ready,
+        }
+
     @staticmethod
     def _json_default(value: Any):
         if isinstance(value, datetime):
