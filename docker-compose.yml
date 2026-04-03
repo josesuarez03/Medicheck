@@ -524,6 +524,8 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./docker/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./docker/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./docker/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
     ports:
       - "3001:3000"
     networks:
