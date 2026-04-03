@@ -527,7 +527,7 @@ services:
       - ./docker/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./docker/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards/json:ro
     ports:
-      - "3001:3000"
+      - "3001:3001"
     networks:
       - app
 
