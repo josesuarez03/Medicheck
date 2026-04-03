@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 import hmac
 import hashlib
@@ -14,6 +14,7 @@ from services.conversation_context_service import ConversationContextService
 from services.embeddings import build_embedding_payload, generate_embedding
 from services.input_validate import analyze_message
 from services.medical_facts import FactsSummary, MedicalFact
+from models.conversation import ConversationalDatasetManager
 from config.config import Config
 
 
@@ -35,6 +36,9 @@ class UserSummaryUpsertRequest(BaseModel):
     summary_version: int
     summary_text: str
     clinical_snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+conversation_manager = ConversationalDatasetManager()
 
 
 def _is_valid_internal_request(payload: dict[str, Any], request_timestamp: str | None, request_signature: str | None) -> bool:
@@ -74,9 +78,60 @@ async def infer_chat(payload: InferenceRequest) -> dict[str, Any]:
         "status": "ok",
         "service": "ai-service",
         "message": payload.message,
-        "conversation_id": payload.conversation_id,
+        "conversation_id": result.get("conversation_id") or payload.conversation_id,
         **result,
     }
+
+
+@router.get("/conversations")
+async def list_conversations(user_id: str, view: str = "active") -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "service": "ai-service",
+        "conversations": conversation_manager.get_conversations(user_id=user_id, view=view),
+    }
+
+
+@router.get("/conversation/{conversation_id}")
+async def get_conversation(conversation_id: str, user_id: str) -> dict[str, Any]:
+    conversation = conversation_manager.get_conversation(user_id=user_id, conversation_id=conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada.")
+    return {
+        "status": "ok",
+        "service": "ai-service",
+        "conversation": conversation,
+    }
+
+
+@router.post("/conversation/{conversation_id}/archive")
+async def archive_conversation(conversation_id: str, user_id: str) -> dict[str, Any]:
+    updated = conversation_manager.archive_conversation(user_id=user_id, conversation_id=conversation_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada o ya archivada.")
+    return {"status": "ok", "service": "ai-service", "conversation_id": conversation_id}
+
+
+@router.post("/conversation/{conversation_id}/recover")
+async def recover_conversation(conversation_id: str, user_id: str) -> dict[str, Any]:
+    updated = conversation_manager.recover_conversation(user_id=user_id, conversation_id=conversation_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada o no archivada.")
+    return {"status": "ok", "service": "ai-service", "conversation_id": conversation_id}
+
+
+@router.delete("/conversation/{conversation_id}")
+async def delete_conversation(conversation_id: str, user_id: str) -> dict[str, Any]:
+    updated = conversation_manager.delete_conversation(user_id=user_id, conversation_id=conversation_id)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada.")
+    return {"status": "ok", "service": "ai-service", "conversation_id": conversation_id}
+
+
+@router.delete("/conversations")
+async def delete_all_conversations(user_id: str) -> dict[str, Any]:
+    deleted = conversation_manager.delete_all_conversations(user_id=user_id)
+    return {"status": "ok", "service": "ai-service", "deleted_count": deleted}
 
 
 @router.post("/comprehend")

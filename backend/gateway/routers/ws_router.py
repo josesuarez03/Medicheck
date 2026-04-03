@@ -7,6 +7,7 @@ import uuid
 from contextlib import suppress
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from uvicorn.protocols.utils import ClientDisconnected
 
 from middleware.auth import decode_access_token
@@ -24,8 +25,14 @@ WS_INACTIVITY_TIMEOUT_SECONDS = max(WS_WARNING_SECONDS + 30, int(os.getenv("WS_I
 
 
 async def _send_json(websocket: WebSocket, payload: dict) -> None:
+    if websocket.application_state == WebSocketState.DISCONNECTED:
+        raise WebSocketDisconnect()
     try:
         await websocket.send_json(payload)
+    except RuntimeError as exc:
+        if 'close message has been sent' in str(exc):
+            raise WebSocketDisconnect() from exc
+        raise
     except (WebSocketDisconnect, ClientDisconnected):
         raise
 
@@ -122,17 +129,17 @@ async def chat_ws(websocket: WebSocket) -> None:
     store.create_pending_session(connection_id=connection_id, client_host=getattr(websocket.client, "host", None))
     auth_timeout_task = asyncio.create_task(_close_if_unauthenticated(websocket, store, connection_id))
     inactivity_task = asyncio.create_task(_inactivity_watchdog(websocket, store, connection_id))
-    await _send_json(
-        websocket,
-        {
-            "event": "connection_pending",
-            "status": "connected",
-            "service": "gateway",
-            "connection_id": connection_id,
-            "message": "Conexión abierta. Envía el primer mensaje de autenticación.",
-        },
-    )
     try:
+        await _send_json(
+            websocket,
+            {
+                "event": "connection_pending",
+                "status": "connected",
+                "service": "gateway",
+                "connection_id": connection_id,
+                "message": "Conexión abierta. Envía el primer mensaje de autenticación.",
+            },
+        )
         while True:
             raw_payload = await websocket.receive_text()
             try:
@@ -193,16 +200,28 @@ async def chat_ws(websocket: WebSocket) -> None:
                 await _send_json(websocket, {"event": "error", "status": "error", "detail": "Tipo de mensaje no soportado."})
                 continue
 
-            result = await orchestrate_chat(
-                {
-                    "message": payload.get("message", ""),
-                    "context": payload.get("context", {}),
-                    "user_data": payload.get("user_data", {}),
-                    "conversation_id": payload.get("conversation_id"),
-                    "user_id": session.get("user_id"),
-                    "jwt_token": session.get("jwt_token"),
-                }
-            )
+            try:
+                result = await orchestrate_chat(
+                    {
+                        "message": payload.get("message", ""),
+                        "context": payload.get("context", {}),
+                        "user_data": payload.get("user_data", {}),
+                        "conversation_id": payload.get("conversation_id"),
+                        "user_id": session.get("user_id"),
+                        "jwt_token": session.get("jwt_token"),
+                    }
+                )
+            except Exception as exc:
+                logger.exception("chat_orchestration_failed connection_id=%s", connection_id)
+                await _send_json(
+                    websocket,
+                    {
+                        "event": "chat_error",
+                        "status": "error",
+                        "detail": str(exc) or "Error interno del gateway al procesar el mensaje.",
+                    },
+                )
+                continue
             conversation_id = result.get("conversation_id") or payload.get("conversation_id")
             store.update_activity(connection_id=connection_id, conversation_id=str(conversation_id or ""))
             await _send_json(
@@ -215,6 +234,7 @@ async def chat_ws(websocket: WebSocket) -> None:
                 },
             )
     except (WebSocketDisconnect, ClientDisconnected):
+        logger.info("websocket_disconnected connection_id=%s", connection_id)
         return
     finally:
         auth_timeout_task.cancel()

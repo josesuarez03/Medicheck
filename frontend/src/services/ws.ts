@@ -20,9 +20,12 @@ class SocketIOService {
   private socket: WebSocket | null = null;
   private listeners: ((payload: ChatResponsePayload) => void)[] = [];
   private errorListeners: ((message: string) => void)[] = [];
+  private closeListeners: ((code: number, reason: string) => void)[] = [];
   private url: string;
   private authenticated = false;
   private authInFlight: Promise<boolean> | null = null;
+  private connectInFlight: Promise<void> | null = null;
+  private intentionalClose = false;
 
   constructor(url: string) {
     this.url = buildWebSocketUrl(url);
@@ -33,9 +36,16 @@ class SocketIOService {
       throw new Error("URL de websocket no configurada");
     }
     if (this.socket && this.socket.readyState === WebSocket.OPEN) return;
+    if (this.connectInFlight) {
+      return this.connectInFlight;
+    }
+    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
+      return;
+    }
 
-    await new Promise<void>((resolve, reject) => {
+    this.connectInFlight = new Promise<void>((resolve, reject) => {
       this.socket = new WebSocket(this.url);
+      this.intentionalClose = false;
 
       this.socket.onopen = () => {
         this.authenticated = false;
@@ -44,6 +54,9 @@ class SocketIOService {
       };
 
       this.socket.onerror = () => {
+        if (this.intentionalClose) {
+          return;
+        }
         reject(new Error("Error de conexión con el websocket"));
       };
 
@@ -51,10 +64,23 @@ class SocketIOService {
         await this.handleIncomingMessage(event.data);
       };
 
-      this.socket.onclose = () => {
+      this.socket.onclose = (event) => {
         this.authenticated = false;
+        this.connectInFlight = null;
+        this.closeListeners.forEach((listener) => listener(event.code, event.reason));
+        if (!this.intentionalClose && event.code !== 1000) {
+          this.handleIncomingError(`Conexión websocket cerrada (${event.code || 1006}).`);
+        }
       };
     });
+
+    try {
+      await this.connectInFlight;
+    } finally {
+      if (this.socket?.readyState !== WebSocket.CONNECTING) {
+        this.connectInFlight = null;
+      }
+    }
   }
 
   private sendRaw(payload: Record<string, unknown>): void {
@@ -79,6 +105,7 @@ class SocketIOService {
         this.authenticated = false;
         this.handleIncomingError("La sesión ha expirado. Vuelve a iniciar sesión.");
         if (this.socket?.readyState === WebSocket.OPEN) {
+          this.intentionalClose = true;
           this.socket.close();
         }
         return false;
@@ -108,7 +135,9 @@ class SocketIOService {
     }
 
     if (payload.event === "connection_pending") {
-      await this.authenticateSocket();
+      if (!this.authenticated && !this.authInFlight) {
+        await this.authenticateSocket();
+      }
       return;
     }
 
@@ -179,6 +208,14 @@ class SocketIOService {
     this.errorListeners = this.errorListeners.filter((l) => l !== listener);
   }
 
+  addCloseListener(listener: (code: number, reason: string) => void): void {
+    this.closeListeners.push(listener);
+  }
+
+  removeCloseListener(listener: (code: number, reason: string) => void): void {
+    this.closeListeners = this.closeListeners.filter((l) => l !== listener);
+  }
+
   isConnected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN && this.authenticated;
   }
@@ -192,9 +229,11 @@ class SocketIOService {
 
   disconnect(): void {
     if (this.socket) {
+      this.intentionalClose = true;
       this.socket.close();
       this.socket = null;
       this.authenticated = false;
+      this.connectInFlight = null;
     }
   }
 }

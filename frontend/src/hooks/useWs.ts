@@ -39,8 +39,17 @@ export const useSocketIO = (url: string, isAuthenticated?: boolean) => {
       setSocketError(message);
     };
 
+    const handleSocketClose = (code: number) => {
+      if (connectionCheckRef.current) {
+        clearInterval(connectionCheckRef.current);
+        connectionCheckRef.current = null;
+      }
+      setConnectionState(code === 1000 ? "disconnected" : "error");
+    };
+
     socketService.addMessageListener(handleMessage);
     socketService.addErrorListener(handleSocketError);
+    socketService.addCloseListener(handleSocketClose);
 
     socketService
       .connect()
@@ -60,6 +69,7 @@ export const useSocketIO = (url: string, isAuthenticated?: boolean) => {
       if (connectionCheckRef.current) clearInterval(connectionCheckRef.current);
       socketService.removeMessageListener(handleMessage);
       socketService.removeErrorListener(handleSocketError);
+      socketService.removeCloseListener(handleSocketClose);
       socketService.disconnect();
       setSocket(null);
       setConnectionState("disconnected");

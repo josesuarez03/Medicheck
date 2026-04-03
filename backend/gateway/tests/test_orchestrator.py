@@ -13,10 +13,14 @@ fake_etl_dispatcher.schedule_inactivity_etl = lambda **kwargs: {"status": "sched
 fake_etl_dispatcher.clear_inactivity_token = lambda **kwargs: None
 sys.modules.setdefault("services.etl_dispatcher", fake_etl_dispatcher)
 
-from services.orchestrator import orchestrate_chat
+from services.orchestrator import _build_service_url, orchestrate_chat
 
 
 class OrchestratorTests(unittest.TestCase):
+    def test_rejects_service_urls_without_http_scheme(self):
+        with self.assertRaisesRegex(RuntimeError, "AI_SERVICE_URL"):
+            _build_service_url("ai-service:5001", "/inference/chat", env_var="AI_SERVICE_URL")
+
     def test_dispatches_etl_when_ai_requests_closure(self):
         async def run():
             with patch(

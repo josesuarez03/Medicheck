@@ -1,6 +1,7 @@
 import os
 from typing import Any
 import uuid
+from urllib.parse import urlparse
 
 import asyncio
 from services.etl_dispatcher import clear_inactivity_token, enqueue_etl_dispatch, schedule_inactivity_etl
@@ -11,15 +12,54 @@ except Exception:  # pragma: no cover
     httpx = None
 
 
-AI_SERVICE_URL = os.getenv("AI_SERVICE_URL")
-EXPERT_SERVICE_URL = os.getenv("EXPERT_SERVICE_URL")
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai-service:5001")
+EXPERT_SERVICE_URL = os.getenv("EXPERT_SERVICE_URL", "http://expert-service:5002")
+
+
+def _resolve_service_url(raw_url: str | None, *, env_var: str) -> str:
+    base_url = (raw_url or "").strip().rstrip("/")
+    if not base_url:
+        raise RuntimeError(f"La variable {env_var} no está configurada.")
+
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(
+            f"La variable {env_var} debe incluir una URL absoluta con http:// o https://. Valor actual: {raw_url!r}"
+        )
+    return base_url
+
+
+def _build_service_url(raw_url: str | None, path: str, *, env_var: str) -> str:
+    base_url = _resolve_service_url(raw_url, env_var=env_var)
+    normalized_path = f"/{path.lstrip('/')}"
+    return f"{base_url}{normalized_path}"
 
 
 async def forward_to_ai(payload: dict[str, Any], path: str = "/inference/chat") -> dict[str, Any]:
     if httpx is None:
         raise RuntimeError("httpx no está disponible en este entorno.")
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(f"{AI_SERVICE_URL}{path}", json=payload)
+        response = await client.post(_build_service_url(AI_SERVICE_URL, path, env_var="AI_SERVICE_URL"), json=payload)
+        response.raise_for_status()
+        return response.json()
+
+
+async def forward_to_ai_request(
+    *,
+    method: str,
+    path: str,
+    params: dict[str, Any] | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if httpx is None:
+        raise RuntimeError("httpx no está disponible en este entorno.")
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.request(
+            method=method,
+            url=_build_service_url(AI_SERVICE_URL, path, env_var="AI_SERVICE_URL"),
+            params=params,
+            json=payload,
+        )
         response.raise_for_status()
         return response.json()
 
@@ -28,7 +68,7 @@ async def forward_to_expert(payload: dict[str, Any], path: str = "/expert/triage
     if httpx is None:
         raise RuntimeError("httpx no está disponible en este entorno.")
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(f"{EXPERT_SERVICE_URL}{path}", json=payload)
+        response = await client.post(_build_service_url(EXPERT_SERVICE_URL, path, env_var="EXPERT_SERVICE_URL"), json=payload)
         response.raise_for_status()
         return response.json()
 
