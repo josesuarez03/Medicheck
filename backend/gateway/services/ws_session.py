@@ -54,7 +54,7 @@ class WebSocketSessionStore:
         return dict(_MEMORY_SESSIONS.get(connection_id, {}))
 
     def save_session(self, connection_id: str, payload: dict[str, Any]) -> None:
-        serialized = {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value) for key, value in payload.items()}
+        serialized = {key: json.dumps(value, ensure_ascii=False) for key, value in payload.items()}
         try:
             self._redis.hset(self._session_key(connection_id), mapping=serialized)
             self._redis.expire(self._session_key(connection_id), WS_AUTH_TTL_SECONDS)

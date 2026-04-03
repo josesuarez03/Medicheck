@@ -229,11 +229,25 @@ class SocketIOService {
 
   disconnect(): void {
     if (this.socket) {
+      const currentSocket = this.socket;
       this.intentionalClose = true;
-      this.socket.close();
       this.socket = null;
       this.authenticated = false;
       this.connectInFlight = null;
+
+      if (currentSocket.readyState === WebSocket.CONNECTING) {
+        currentSocket.onopen = () => {
+          currentSocket.close(1000, "client_cleanup");
+        };
+        currentSocket.onmessage = null;
+        currentSocket.onerror = null;
+        currentSocket.onclose = null;
+        return;
+      }
+
+      if (currentSocket.readyState === WebSocket.OPEN) {
+        currentSocket.close(1000, "client_cleanup");
+      }
     }
   }
 }

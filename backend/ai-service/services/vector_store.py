@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime
@@ -18,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 
 class VectorStore:
+    _schema_ready = False
+    _schema_lock = threading.Lock()
+
     def __init__(self):
         self.enabled = all(
             [
@@ -27,6 +31,7 @@ class VectorStore:
                 Config.POSTGRES_PASSWORD,
             ]
         )
+        self.embedding_dimensions = max(1, int(getattr(Config, "BEDROCK_EMBEDDING_DIMENSIONS", 1024) or 1024))
 
     @contextmanager
     def _connect(self) -> Iterator[psycopg.Connection]:
@@ -41,11 +46,86 @@ class VectorStore:
             row_factory=dict_row,
             autocommit=True,
         )
-        register_vector(connection)
         try:
+            self._ensure_schema_ready(connection)
+            register_vector(connection)
             yield connection
         finally:
             connection.close()
+
+    def _ensure_schema_ready(self, connection: psycopg.Connection) -> None:
+        if not self.enabled or self.__class__._schema_ready:
+            return
+
+        with self.__class__._schema_lock:
+            if self.__class__._schema_ready:
+                return
+
+            connection.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            connection.execute("CREATE SCHEMA IF NOT EXISTS rag")
+            connection.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS rag.conversation_embeddings (
+                    id uuid PRIMARY KEY,
+                    user_id uuid NOT NULL,
+                    patient_id uuid NULL,
+                    conversation_id uuid NOT NULL,
+                    source_turn_id text NULL,
+                    embedding_model text NOT NULL,
+                    embedding vector({self.embedding_dimensions}) NOT NULL,
+                    embedding_text text NOT NULL,
+                    facts_summary jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+                    signal_score numeric(4,3) NOT NULL,
+                    triage_level varchar(20) NULL,
+                    clinical_topic varchar(100) NULL,
+                    created_at timestamptz NOT NULL DEFAULT NOW(),
+                    episode_timestamp timestamptz NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversation_embeddings_user_conversation_created
+                    ON rag.conversation_embeddings (user_id, conversation_id, created_at DESC)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversation_embeddings_user_signal
+                    ON rag.conversation_embeddings (user_id, signal_score)
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conversation_embeddings_triage
+                    ON rag.conversation_embeddings (triage_level)
+                """
+            )
+            connection.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS rag.user_summary_embeddings (
+                    id uuid PRIMARY KEY,
+                    user_id uuid NOT NULL UNIQUE,
+                    patient_id uuid NOT NULL UNIQUE,
+                    clinical_summary_id uuid NOT NULL,
+                    embedding_model text NOT NULL,
+                    embedding vector({self.embedding_dimensions}) NOT NULL,
+                    summary_text text NOT NULL,
+                    clinical_snapshot jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+                    summary_version integer NOT NULL,
+                    source_updated_at timestamptz NULL,
+                    created_at timestamptz NOT NULL DEFAULT NOW(),
+                    updated_at timestamptz NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_user_summary_embeddings_summary_version
+                    ON rag.user_summary_embeddings (summary_version)
+                """
+            )
+            self.__class__._schema_ready = True
 
     @staticmethod
     def _json_default(value: Any):

@@ -4,6 +4,49 @@ import type { ChatResponsePayload } from "@/types/messages";
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 
+type SharedSocketEntry = {
+  service: SocketIOService;
+  refs: number;
+  disconnectTimer: ReturnType<typeof setTimeout> | null;
+};
+
+const sharedSockets = new Map<string, SharedSocketEntry>();
+
+const acquireSharedSocket = (url: string): SocketIOService => {
+  const existing = sharedSockets.get(url);
+  if (existing) {
+    existing.refs += 1;
+    if (existing.disconnectTimer) {
+      clearTimeout(existing.disconnectTimer);
+      existing.disconnectTimer = null;
+    }
+    return existing.service;
+  }
+
+  const entry: SharedSocketEntry = {
+    service: new SocketIOService(url),
+    refs: 1,
+    disconnectTimer: null,
+  };
+  sharedSockets.set(url, entry);
+  return entry.service;
+};
+
+const releaseSharedSocket = (url: string): void => {
+  const entry = sharedSockets.get(url);
+  if (!entry) return;
+
+  entry.refs -= 1;
+  if (entry.refs > 0) return;
+
+  entry.disconnectTimer = setTimeout(() => {
+    const latest = sharedSockets.get(url);
+    if (!latest || latest.refs > 0) return;
+    latest.service.disconnect();
+    sharedSockets.delete(url);
+  }, 1000);
+};
+
 export const useSocketIO = (url: string, isAuthenticated?: boolean) => {
   const [messages, setMessages] = useState<ChatResponsePayload[]>([]);
   const [socket, setSocket] = useState<SocketIOService | null>(null);
@@ -27,7 +70,7 @@ export const useSocketIO = (url: string, isAuthenticated?: boolean) => {
     setConnectionState("connecting");
     setLastError(null);
 
-    const socketService = new SocketIOService(url);
+    const socketService = acquireSharedSocket(url);
     setSocket(socketService);
 
     const handleMessage = (payload: ChatResponsePayload) => {
@@ -70,7 +113,7 @@ export const useSocketIO = (url: string, isAuthenticated?: boolean) => {
       socketService.removeMessageListener(handleMessage);
       socketService.removeErrorListener(handleSocketError);
       socketService.removeCloseListener(handleSocketClose);
-      socketService.disconnect();
+      releaseSharedSocket(url);
       setSocket(null);
       setConnectionState("disconnected");
     };

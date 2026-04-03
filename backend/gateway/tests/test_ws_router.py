@@ -120,6 +120,21 @@ class WebSocketRouterTests(unittest.TestCase):
         self.assertEqual(websocket.sent_messages[2]["event"], "chat_error")
         self.assertFalse(websocket.closed)
 
+    def test_auth_timeout_uses_boolean_authenticated_state_from_store(self):
+        websocket = FakeWebSocket([json.dumps({"type": "authenticate", "token": "jwt-token"})])
+
+        async def run():
+            with patch("routers.ws_router.WS_AUTH_TIMEOUT_SECONDS", 0), patch(
+                "routers.ws_router.decode_access_token",
+                return_value={"sub": "user-1", "raw_token": "jwt-token"},
+            ):
+                await ws_router.chat_ws(websocket)
+
+        asyncio.run(run())
+        events = [message["event"] for message in websocket.sent_messages]
+        self.assertIn("connection_success", events)
+        self.assertNotIn("auth_timeout", events)
+
 
 if __name__ == "__main__":
     unittest.main()

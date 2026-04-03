@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class DjangoClinicalSummaryClient:
     def __init__(self):
-        self.base_url = (Config.DJANGO_API_URL or Config.DJANGO_API_URL_FLASK or "").rstrip("/")
+        self.base_url = (Config.DJANGO_API_URL_FLASK or Config.DJANGO_API_URL or "").rstrip("/")
         self.shared_secret = Config.FLASK_API_KEY or ""
 
     @property

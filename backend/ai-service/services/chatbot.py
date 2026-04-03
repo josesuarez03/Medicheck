@@ -535,6 +535,7 @@ class Chatbot:
                         symptoms_pattern,
                         pain_scale,
                         triaje_level,
+                        conversation_id=self.conversation_id,
                     )
                     return
                 current_messages = current.get("messages", []) if isinstance(current, dict) else []
@@ -560,6 +561,7 @@ class Chatbot:
                     symptoms_pattern,
                     pain_scale,
                     triaje_level,
+                    conversation_id=self.conversation_id,
                 )
         except Exception as exc:
             logger.warning("Could not persist conversation %s: %s", self.conversation_id, exc)

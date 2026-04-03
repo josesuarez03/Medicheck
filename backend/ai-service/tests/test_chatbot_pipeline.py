@@ -1,6 +1,7 @@
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -50,6 +51,44 @@ class ChatbotPipelineTests(unittest.TestCase):
 
         self.assertEqual(result["conversation_state"]["next_intent"], "etl_skipped_same_context")
         self.assertFalse(result["conversation_state"]["should_trigger_etl"])
+
+    def test_first_turn_preserves_provided_conversation_id(self):
+        class FakeConversationManager:
+            def __init__(self):
+                self.created_ids = []
+
+            def get_conversation(self, user_id, conversation_id):
+                return None
+
+            def add_conversation(
+                self,
+                user_id,
+                medical_context,
+                messages,
+                symptoms,
+                symptoms_pattern,
+                pain_scale,
+                triaje_level,
+                conversation_id=None,
+            ):
+                self.created_ids.append(conversation_id)
+                return conversation_id
+
+        fake_manager = FakeConversationManager()
+
+        with patch("services.chatbot.ConversationalDatasetManager", return_value=fake_manager), patch(
+            "services.chatbot.ConversationContextService",
+            side_effect=RuntimeError("context store unavailable"),
+        ):
+            result = Chatbot(
+                "Tengo dolor de pecho 8/10 desde hace 2 horas y disnea",
+                {},
+                user_id="user-1",
+                conversation_id="conv-1",
+            ).initialize_conversation()
+
+        self.assertEqual(result["conversation_id"], "conv-1")
+        self.assertEqual(fake_manager.created_ids, ["conv-1"])
 
 
 if __name__ == "__main__":

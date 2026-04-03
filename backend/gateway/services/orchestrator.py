@@ -89,12 +89,17 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
         forward_to_expert(expert_payload),
         forward_to_ai(ai_payload),
     )
+    resolved_conversation_id = (
+        ai_result.get("conversation_id")
+        if isinstance(ai_result, dict) and ai_result.get("conversation_id")
+        else conversation_id
+    )
 
     if expert_result.get("emergency_triggered"):
         return {
             "status": "ok",
             "service": "gateway",
-            "conversation_id": conversation_id,
+            "conversation_id": resolved_conversation_id,
             "response_source": "expert",
             "response": expert_result.get("response", ""),
             "triaje_level": expert_result.get("triage_level", "Severo"),
@@ -104,12 +109,12 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
 
     etl_dispatch = None
     ai_conversation_state = ai_result.get("conversation_state", {}) if isinstance(ai_result, dict) else {}
-    if isinstance(ai_conversation_state, dict) and user_id and conversation_id:
+    if isinstance(ai_conversation_state, dict) and user_id and resolved_conversation_id:
         if ai_conversation_state.get("should_trigger_etl") is True:
-            clear_inactivity_token(user_id=user_id, conversation_id=conversation_id)
+            clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
             etl_dispatch = enqueue_etl_dispatch(
                 user_id=user_id,
-                conversation_id=conversation_id,
+                conversation_id=resolved_conversation_id,
                 jwt_token=jwt_token,
                 reasons=[str(ai_conversation_state.get("etl_reason") or "closure_confirmed")],
             )
@@ -117,18 +122,18 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
         elif ai_conversation_state.get("awaiting_closure_confirmation") is True:
             etl_dispatch = schedule_inactivity_etl(
                 user_id=user_id,
-                conversation_id=conversation_id,
+                conversation_id=resolved_conversation_id,
                 jwt_token=jwt_token,
                 reasons=["inactivity_timeout"],
             )
             ai_conversation_state["etl_dispatch"] = etl_dispatch
         else:
-            clear_inactivity_token(user_id=user_id, conversation_id=conversation_id)
+            clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
 
     return {
         "status": "ok",
         "service": "gateway",
-        "conversation_id": conversation_id,
+        "conversation_id": resolved_conversation_id,
         "response_source": "ai",
         "response": ai_result.get("response", ""),
         "final_chat_summary": ai_result.get("final_chat_summary"),

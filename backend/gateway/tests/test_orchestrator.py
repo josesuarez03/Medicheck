@@ -31,6 +31,7 @@ class OrchestratorTests(unittest.TestCase):
                 return_value={
                     "response": "Perfecto. Cierro esta consulta.",
                     "triaje_level": "Leve",
+                    "conversation_id": "conv-db-1",
                     "conversation_state": {
                         "should_trigger_etl": True,
                         "etl_reason": "closure_confirmed",
@@ -40,7 +41,9 @@ class OrchestratorTests(unittest.TestCase):
                 enqueue.return_value = {"status": "queued", "task_id": "task-1", "run_id": "run-1"}
                 result = await orchestrate_chat({"message": "ok gracias", "user_id": "user-1", "conversation_id": "conv-1"})
                 self.assertEqual(result["etl_dispatch"]["status"], "queued")
+                self.assertEqual(result["conversation_id"], "conv-db-1")
                 enqueue.assert_called_once()
+                self.assertEqual(enqueue.call_args.kwargs["conversation_id"], "conv-db-1")
 
         asyncio.run(run())
 

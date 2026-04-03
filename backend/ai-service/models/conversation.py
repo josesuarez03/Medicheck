@@ -119,9 +119,19 @@ class ConversationalDatasetManager:
             return str(binary_obj.as_uuid())
         return str(binary_obj)
 
-    def add_conversation(self, user_id, medical_context, messages, symptoms, symptoms_pattern, pain_scale, triaje_level):
+    def add_conversation(
+        self,
+        user_id,
+        medical_context,
+        messages,
+        symptoms,
+        symptoms_pattern,
+        pain_scale,
+        triaje_level,
+        conversation_id=None,
+    ):
         try:
-            conversation_id = str(uuid.uuid4())
+            conversation_id = str(conversation_id or uuid.uuid4())
             now = datetime.now()
             conversation = {
                 "user_id": user_id,

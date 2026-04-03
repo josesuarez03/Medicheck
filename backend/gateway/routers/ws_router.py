@@ -233,8 +233,11 @@ async def chat_ws(websocket: WebSocket) -> None:
                     **result,
                 },
             )
-    except (WebSocketDisconnect, ClientDisconnected):
-        logger.info("websocket_disconnected connection_id=%s", connection_id)
+    except WebSocketDisconnect as exc:
+        logger.info("websocket_disconnected connection_id=%s code=%s", connection_id, getattr(exc, "code", "unknown"))
+        return
+    except ClientDisconnected:
+        logger.info("websocket_client_disconnected connection_id=%s", connection_id)
         return
     finally:
         auth_timeout_task.cancel()
