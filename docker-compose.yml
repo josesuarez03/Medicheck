@@ -64,6 +64,8 @@ services:
     image: mongo:7
     container_name: mongo
     restart: on-failure
+    mem_limit: 1024m
+    mem_reservation: 512m
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
@@ -89,6 +91,8 @@ services:
     image: redis:7
     container_name: redis
     restart: on-failure
+    mem_limit: 256m
+    mem_reservation: 128m
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
       - "6379:6379"
@@ -158,6 +162,8 @@ services:
     env_file:
       - .env
     restart: on-failure
+    mem_limit: 768m
+    mem_reservation: 384m
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -190,6 +196,8 @@ services:
     env_file:
       - .env
     restart: on-failure
+    mem_limit: 768m
+    mem_reservation: 384m
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -366,6 +374,8 @@ services:
     image: amir20/dozzle:latest
     container_name: dozzle
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     ports:
       - "8088:8080"
     volumes:
@@ -377,6 +387,8 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: cadvisor
     restart: on-failure
+    mem_limit: 256m
+    mem_reservation: 128m
     ports:
       - "8089:8080"
     volumes:
@@ -394,6 +406,8 @@ services:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: postgres-exporter
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     depends_on:
       postgres:
         condition: service_healthy
@@ -408,6 +422,8 @@ services:
     image: oliver006/redis_exporter:latest
     container_name: redis-exporter
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     depends_on:
       redis:
         condition: service_healthy
@@ -423,6 +439,8 @@ services:
     image: kbudde/rabbitmq-exporter:latest
     container_name: rabbitmq-exporter
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -441,6 +459,8 @@ services:
     image: percona/mongodb_exporter:0.40
     container_name: mongodb-exporter
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     depends_on:
       mongo:
         condition: service_healthy
@@ -458,6 +478,8 @@ services:
     image: prom/blackbox-exporter:latest
     container_name: blackbox-exporter
     restart: on-failure
+    mem_limit: 128m
+    mem_reservation: 64m
     command:
       - --config.file=/etc/blackbox_exporter/config.yml
     volumes:
@@ -471,6 +493,8 @@ services:
     image: prom/prometheus:latest
     container_name: prometheus
     restart: on-failure
+    mem_limit: 768m
+    mem_reservation: 384m
     depends_on:
       cadvisor:
         condition: service_started
@@ -499,6 +523,8 @@ services:
     image: jaegertracing/all-in-one:1.57
     container_name: jaeger
     restart: on-failure
+    mem_limit: 512m
+    mem_reservation: 256m
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
@@ -512,6 +538,8 @@ services:
     image: grafana/grafana:latest
     container_name: grafana
     restart: on-failure
+    mem_limit: 384m
+    mem_reservation: 192m
     depends_on:
       prometheus:
         condition: service_started
