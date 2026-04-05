@@ -156,6 +156,12 @@ class VectorStore:
     def _serialize_json(payload: dict[str, Any] | None) -> str:
         return json.dumps(payload or {}, ensure_ascii=False, default=VectorStore._json_default)
 
+    @staticmethod
+    def _vector_literal(values: list[float] | None) -> str | None:
+        if not values:
+            return None
+        return "[" + ",".join(str(float(value)) for value in values) + "]"
+
     def insert_conversation_embedding(
         self,
         *,
@@ -241,6 +247,9 @@ class VectorStore:
     ) -> list[dict[str, Any]]:
         if not self.enabled or not query_embedding:
             return []
+        vector_literal = self._vector_literal(query_embedding)
+        if not vector_literal:
+            return []
         query = """
             SELECT
                 source_turn_id,
@@ -249,12 +258,12 @@ class VectorStore:
                 triage_level,
                 signal_score,
                 created_at,
-                1 - (embedding <=> %(embedding)s) AS score
+                1 - (embedding <=> %(embedding)s::vector) AS score
             FROM rag.conversation_embeddings
             WHERE user_id = %(user_id)s::uuid
               AND conversation_id = %(conversation_id)s::uuid
               AND signal_score >= %(min_signal_score)s
-            ORDER BY embedding <=> %(embedding)s
+            ORDER BY embedding <=> %(embedding)s::vector
             LIMIT %(limit)s
         """
         try:
@@ -264,7 +273,7 @@ class VectorStore:
                     {
                         "user_id": user_id,
                         "conversation_id": conversation_id,
-                        "embedding": query_embedding,
+                        "embedding": vector_literal,
                         "min_signal_score": min_signal_score,
                         "limit": limit,
                     },
@@ -285,10 +294,13 @@ class VectorStore:
     ) -> list[dict[str, Any]]:
         if not self.enabled or not query_embedding:
             return []
+        vector_literal = self._vector_literal(query_embedding)
+        if not vector_literal:
+            return []
         exclusion_clause = ""
         params: dict[str, Any] = {
             "user_id": user_id,
-            "embedding": query_embedding,
+            "embedding": vector_literal,
             "min_signal_score": min_signal_score,
             "limit": limit,
         }
@@ -304,12 +316,12 @@ class VectorStore:
                 triage_level,
                 signal_score,
                 created_at,
-                1 - (embedding <=> %(embedding)s) AS score
+                1 - (embedding <=> %(embedding)s::vector) AS score
             FROM rag.conversation_embeddings
             WHERE user_id = %(user_id)s::uuid
               AND signal_score >= %(min_signal_score)s
               {exclusion_clause}
-            ORDER BY embedding <=> %(embedding)s
+            ORDER BY embedding <=> %(embedding)s::vector
             LIMIT %(limit)s
         """
         try:

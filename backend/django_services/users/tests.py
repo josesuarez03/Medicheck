@@ -222,6 +222,7 @@ class SecurityViewsTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["id"], str(summary.id))
         self.assertEqual(response.json()["patient"], str(self.patient.id))
         self.assertIn("summary_text", response.json())
 

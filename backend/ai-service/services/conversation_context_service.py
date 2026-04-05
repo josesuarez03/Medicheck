@@ -263,12 +263,16 @@ class ConversationContextService:
         summary_text = summary.get("summary_text", "")
         if not summary_text:
             return summary
+        clinical_summary_id = summary.get("id")
+        if not clinical_summary_id:
+            logger.warning("Skipping user summary embedding refresh for user %s: clinical summary id missing.", user_id)
+            return summary
         try:
             embedding = generate_embedding(summary_text)
             self.vector_store.upsert_user_summary_embedding(
                 user_id=user_id,
                 patient_id=summary.get("patient"),
-                clinical_summary_id=summary.get("id"),
+                clinical_summary_id=clinical_summary_id,
                 embedding_model=Config.BEDROCK_EMBEDDING_MODEL_ID or "deterministic_fallback",
                 embedding=embedding,
                 summary_text=summary_text,

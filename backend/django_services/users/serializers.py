@@ -376,6 +376,7 @@ class PatientClinicalSummaryContextSerializer(serializers.ModelSerializer):
     class Meta:
         model = PatientClinicalSummary
         fields = (
+            'id',
             'patient',
             'summary_version',
             'chief_complaint_current',
