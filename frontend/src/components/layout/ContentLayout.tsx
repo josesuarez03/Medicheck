@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import Loading from "@/components/loading";
@@ -12,9 +12,11 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
     const { isAuthenticated, loading, user } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const safePath = pathname || "";
     const isHomeRoute = pathname === ROUTES.PUBLIC.HOME;
     const isAuthRoute = pathname?.startsWith("/auth/");
+    const isChatRoute = pathname === ROUTES.PROTECTED.CHAT;
 
     // Determinar si es una ruta protegida explícitamente
     const isProtectedRoute = Object.values(ROUTES.PROTECTED).some(route => 
@@ -53,6 +55,10 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
             }
         }
     }, [isAuthenticated, isProtectedRoute, isDoctorRoute, loading, pathname, router, safePath, user?.tipo]);
+
+    useEffect(() => {
+        setMobileSidebarOpen(false);
+    }, [pathname]);
     
     // Mostrar componente de carga mientras se determina el estado de autenticación
     if (loading) {
@@ -73,11 +79,19 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
                 >
                     Saltar al contenido principal
                 </a>
-                <Sidebar />
+                {mobileSidebarOpen && (
+                    <button
+                        type="button"
+                        aria-label="Cerrar menú"
+                        className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[1px] md:hidden"
+                        onClick={() => setMobileSidebarOpen(false)}
+                    />
+                )}
+                <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
                 <div className="flex flex-col flex-1 overflow-hidden">
-                    <Header />
+                    <Header onOpenMobileMenu={() => setMobileSidebarOpen(true)} />
                     <main id="main-content" className="flex-1 overflow-y-auto">
-                        <div className="page-container">
+                        <div className={isChatRoute ? "w-full px-3 py-3 md:px-4 md:py-4" : "page-container"}>
                         {children}
                         </div>
                     </main>

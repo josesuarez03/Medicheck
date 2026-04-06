@@ -17,6 +17,7 @@ import {
   TbSettings,
   TbCalendarEvent,
   TbClipboardCheck,
+  TbX,
 } from "react-icons/tb";
 import { useAuth } from "@/hooks/useAuth";
 import { usePathname } from "next/navigation";
@@ -34,7 +35,12 @@ const iconMap: Record<string, React.ReactNode> = {
   ClipboardCheckIcon: <TbClipboardCheck />,
 };
 
-export default function Sidebar() {
+type SidebarProps = {
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
+};
+
+export default function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const { user, logout, isAuthenticated } = useAuth();
   const pathname = usePathname();
@@ -58,11 +64,14 @@ export default function Sidebar() {
         : "nav-muted-text hover:bg-white/10 hover:text-white"
     }`;
 
+  const containerWidth = isExpanded ? "w-60" : "w-[74px]";
+
   return (
     <aside
-      className={`nav-shell h-screen shrink-0 border-r border-white/10 transition-all duration-300 ${
-        isExpanded ? "w-60" : "w-[74px]"
-      }`}
+      className={`nav-shell fixed inset-y-0 left-0 z-50 h-screen shrink-0 border-r border-white/10 transition-transform duration-300 md:static md:z-auto md:translate-x-0 ${
+        mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      } ${containerWidth}`}
+      aria-hidden={!mobileOpen}
     >
       <div className="h-full flex flex-col">
         <div className="px-3 py-4 border-b border-white/10">
@@ -77,10 +86,19 @@ export default function Sidebar() {
               variant="ghost"
               size="icon"
               onClick={() => setIsExpanded((prev) => !prev)}
-              className="text-white hover:bg-white/10"
+              className="hidden text-white hover:bg-white/10 md:inline-flex"
               aria-label="Contraer menú"
             >
               {isExpanded ? <TbChevronLeft className="h-4 w-4" /> : <TbChevronRight className="h-4 w-4" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onMobileClose}
+              className="text-white hover:bg-white/10 md:hidden"
+              aria-label="Cerrar menú"
+            >
+              <TbX className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -128,7 +146,7 @@ export default function Sidebar() {
           )}
           <div className="space-y-1">
             {(isDoctor ? NAVIGATION_ITEMS.doctor : NAVIGATION_ITEMS.main).map((item) => (
-              <Link key={item.path} href={item.path} className={navItemClass(isActivePath(item.path))}>
+              <Link key={item.path} href={item.path} className={navItemClass(isActivePath(item.path))} onClick={onMobileClose}>
                 <span className="text-lg">{iconMap[item.icon] || <TbHome />}</span>
                 {isExpanded && <span>{item.name === "Chat" ? "Chat · Hipo" : item.name}</span>}
               </Link>
@@ -137,7 +155,7 @@ export default function Sidebar() {
         </nav>
 
         <div className="px-2 py-3 border-t border-white/10 space-y-1">
-          <Link href={ROUTES.PROTECTED.PROFILE} className={navItemClass(isActivePath(ROUTES.PROTECTED.PROFILE))}>
+          <Link href={ROUTES.PROTECTED.PROFILE} className={navItemClass(isActivePath(ROUTES.PROTECTED.PROFILE))} onClick={onMobileClose}>
             <span className="text-lg">
               <TbSettings />
             </span>
@@ -145,7 +163,10 @@ export default function Sidebar() {
           </Link>
           <button
             type="button"
-            onClick={logout}
+            onClick={() => {
+              onMobileClose?.();
+              logout();
+            }}
             className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/90 hover:bg-red-500/15 hover:text-red-100 transition"
           >
             <span className="text-lg">
