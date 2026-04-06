@@ -460,10 +460,14 @@ export default function HomePage() {
               Color palette: light blue (#2583CC), white, soft gray tones.
               Healthcare context, no text in the illustration."
             */}
-            <div className="rounded-2xl bg-gradient-to-br from-primary/5 to-sky-50 h-40 flex items-center justify-center border border-slate-100">
-              <p className="text-xs text-slate-400 font-medium">
-                [Ilustración paciente — NanoBanana]
-              </p>
+            <div className="relative h-44 overflow-hidden rounded-2xl border border-slate-100 bg-gradient-to-br from-primary/5 to-sky-50">
+              <Image
+                src="/assets/img/patient.png"
+                alt="Paciente usando Medicheck desde el móvil"
+                fill
+                className="object-contain p-4"
+                sizes="(max-width: 768px) 100vw, 50vw"
+              />
             </div>
           </div>
 
