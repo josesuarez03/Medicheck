@@ -491,7 +491,7 @@ export default function Chatbot() {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] rounded-[1.75rem] border border-border/80 bg-card shadow-sm overflow-hidden">
+    <div className="h-[calc(100vh-8rem)] overflow-hidden rounded-[1.75rem] bg-card/70 shadow-sm">
       <section className="flex h-full flex-col">
         <div className="border-b border-border/70 bg-card px-4 py-3 md:px-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -571,7 +571,10 @@ export default function Chatbot() {
           </div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(37,131,204,0.03),transparent_24%),rgba(148,163,184,0.06)] p-4 md:p-6 dark:bg-[linear-gradient(180deg,rgba(37,131,204,0.06),transparent_24%),rgba(15,23,42,0.3)]" aria-live="polite">
+        <div
+          className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(37,131,204,0.03),transparent_24%),rgba(148,163,184,0.05)] px-4 pb-6 pt-6 md:px-6 dark:bg-[linear-gradient(180deg,rgba(37,131,204,0.05),transparent_24%),rgba(15,23,42,0.24)]"
+          aria-live="polite"
+        >
           {isArchivedConversation && activeConversationId && (
             <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-700 dark:bg-amber-900/25 dark:text-amber-100">
               <div className="flex items-center gap-2 text-sm">
@@ -586,7 +589,7 @@ export default function Chatbot() {
           )}
 
           {messages.length === 0 && !isWaitingBot && !chatError && (
-            <div className="flex h-full items-center justify-center">
+            <div className="flex h-full items-center justify-center px-4">
               <div className="flex max-w-md flex-col items-center text-center">
                 <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 shadow-sm ring-8 ring-background/80">
                   <span className="text-5xl">🤖</span>
@@ -658,8 +661,8 @@ export default function Chatbot() {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="border-t border-border/70 bg-card px-4 py-4">
-          <div className="rounded-[1.9rem] border border-border/80 bg-background/95 p-3 shadow-[0_-12px_30px_rgba(15,23,42,0.05)]">
+        <div className="bg-transparent px-4 pb-4 pt-2 md:px-6">
+          <div className="mx-auto max-w-4xl rounded-[1.9rem] border border-border/60 bg-card/95 p-3 shadow-[0_14px_40px_rgba(15,23,42,0.10)] backdrop-blur">
             {!isArchivedConversation && (
               <div className="mb-3 flex flex-wrap gap-2">
                 {quickReplies.map((item) => (
@@ -676,7 +679,7 @@ export default function Chatbot() {
             )}
 
             <form onSubmit={handleSendMessage} className="w-full">
-              <div className="flex items-end gap-2 rounded-[1.35rem] border border-border/80 bg-card px-3 py-2 shadow-sm transition focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15">
+              <div className="flex items-end gap-2 rounded-[1.3rem] bg-transparent px-1 py-1 transition focus-within:ring-0">
                 <Textarea
                   value={input}
                   onChange={(event) => handleInputChange(event.target.value)}
@@ -691,20 +694,34 @@ export default function Chatbot() {
                           ? "Conectando..."
                           : "Sin conexión con el servidor"
                   }
-                  className="min-h-[46px] max-h-36 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0"
+                  className="min-h-[48px] max-h-36 resize-none border-0 bg-transparent px-3 py-2 text-[15px] shadow-none focus-visible:ring-0"
                   disabled={!isConnected || isWaitingBot || isArchivedConversation}
                   aria-label="Mensaje para el asistente"
                 />
                 <div className="flex items-center gap-1 pb-1">
-                  <Button type="button" size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Adjuntar archivo" disabled={isArchivedConversation}>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="rounded-full text-muted-foreground hover:bg-accent/70"
+                    aria-label="Adjuntar archivo"
+                    disabled={isArchivedConversation}
+                  >
                     <TbPaperclip className="h-5 w-5" />
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Dictado de voz" disabled={isArchivedConversation}>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="rounded-full text-muted-foreground hover:bg-accent/70"
+                    aria-label="Dictado de voz"
+                    disabled={isArchivedConversation}
+                  >
                     <TbMicrophone className="h-5 w-5" />
                   </Button>
                   <Button
                     type="submit"
-                    className="h-11 rounded-xl px-4 text-sm font-semibold"
+                    className="h-11 rounded-2xl px-4 text-sm font-semibold shadow-sm"
                     disabled={!isConnected || !input.trim() || isWaitingBot || isArchivedConversation}
                     title={!isConnected ? "No conectado al servidor" : "Enviar mensaje"}
                     aria-label="Enviar mensaje"
