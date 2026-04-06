@@ -18,6 +18,7 @@ export const ROUTES = {
       PROFILE_CHANGE_PASSWORD: '/profile/change-password',
       PROFILE_DELETE_ACCOUNT: '/profile/delete-account',
       CHAT: '/chat',
+      CHAT_SESSIONS: '/chat/sessions',
       MEDICAL_DATA: '/medical-data',
       TRIAGE_HISTORY: '/triage-history',
       APPOINTMENTS: '/appointments',

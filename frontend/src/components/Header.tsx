@@ -11,6 +11,7 @@ import { ROUTES } from "@/routes/routePaths";
 
 const resolvePageTitle = (pathname: string) => {
   if (pathname.startsWith("/doctor/clinical-history/")) return "Historial clínico";
+  if (pathname.startsWith("/chat/sessions")) return "Historial de sesiones";
   if (pathname.startsWith("/doctor/patients/")) return "Ficha del paciente";
   if (pathname.startsWith("/doctor/validations/")) return "Detalle de validación";
   if (pathname.startsWith("/doctor/appointments/")) return "Detalle de cita";
@@ -18,6 +19,7 @@ const resolvePageTitle = (pathname: string) => {
   const titles: Record<string, string> = {
     "/dashboard": "Panel del paciente",
     "/chat": "Consulta y triaje",
+    "/chat/sessions": "Historial de sesiones",
     "/triage-history": "Historial de triajes",
     "/appointments": "Mis citas",
     "/appointments/new": "Solicitar cita",

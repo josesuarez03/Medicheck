@@ -520,7 +520,7 @@ export default function Chatbot() {
                 + Nueva sesión
               </Button>
               <Button asChild variant="outline" size="icon" className="rounded-full" aria-label="Historial de sesiones">
-                <Link href={ROUTES.PROTECTED.TRIAGE_HISTORY}>
+                <Link href={ROUTES.PROTECTED.CHAT_SESSIONS}>
                   <TbFileDescription className="h-4 w-4" />
                 </Link>
               </Button>
