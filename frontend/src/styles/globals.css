@@ -195,6 +195,23 @@
       radial-gradient(circle at top left, rgba(37, 131, 204, 0.18), transparent 28%),
       linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-soft)) 100%);
   }
+
+  .google-auth-overlay {
+    opacity: 0.01;
+  }
+
+  .google-auth-overlay,
+  .google-auth-overlay > div,
+  .google-auth-overlay iframe {
+    width: 100% !important;
+    min-width: 100% !important;
+    height: 100% !important;
+  }
+
+  .google-auth-overlay > div {
+    display: flex;
+    align-items: stretch;
+  }
 }
 
 /* Clases directas para los colores personalizados */

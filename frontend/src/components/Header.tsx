@@ -46,9 +46,7 @@ export default function Header() {
     <header className="border-b border-border/70 bg-card/95 px-4 py-3 backdrop-blur-md md:px-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <div className="mb-2 inline-flex min-h-9 items-center rounded-full border border-primary/15 bg-primary/10 px-3 text-xs font-medium text-primary">
-            {isDoctorArea ? "Vista profesional" : "Seguimiento personal"}
-          </div>
+
           <h1 className="text-lg md:text-2xl font-semibold tracking-tight">
             {pageTitle}
             <span className="text-primary"> · {name}</span>

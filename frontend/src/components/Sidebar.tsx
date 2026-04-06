@@ -5,7 +5,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "./ui/button";
 import {
-  TbBriefcaseMedical,
   TbHome,
   TbReportMedical,
   TbLogout,
@@ -111,7 +110,7 @@ export default function Sidebar() {
             <div className="mx-2 mb-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
-                  <TbBriefcaseMedical className="h-5 w-5" />
+                  <TbClipboardList className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[11px] uppercase tracking-[0.18em] text-white/55">

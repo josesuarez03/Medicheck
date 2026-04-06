@@ -5,13 +5,14 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/hooks/useAuth";
-import { GoogleOAuthProvider, GoogleLogin, CredentialResponse } from "@react-oauth/google";
+import { GoogleOAuthProvider, CredentialResponse } from "@react-oauth/google";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -207,16 +208,7 @@ export default function Register() {
           </Alert>
         )}
 
-        <div className="mb-5 rounded-[1.5rem] border border-primary/10 bg-primary/[0.035] p-4 shadow-sm">
-          <div className="mb-3 flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <TbBrandGoogle className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Registro rapido</p>
-              <p className="mt-1 text-sm text-muted-foreground">Puedes empezar con Google y completar despues tu perfil dentro de la aplicacion.</p>
-            </div>
-          </div>
+        <div className="mb-5">
           {googleUnavailable ? (
             <Button type="button" variant="secondary" className="w-full rounded-full" disabled>
               <TbBrandGoogle className="w-5 h-5 mr-2" />
@@ -224,27 +216,16 @@ export default function Register() {
             </Button>
           ) : (
             <GoogleOAuthProvider clientId={googleClientId}>
-              <div className="overflow-hidden rounded-2xl border border-border/70 bg-background px-3 py-3 shadow-inner">
-                <div className="flex justify-center">
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={() => setGoogleError("Error al iniciar sesión con Google. Intenta nuevamente.")}
-                  useOneTap={false}
-                  auto_select={false}
-                  theme="outline"
-                  text="signup_with"
-                  shape="rectangular"
-                  size="large"
-                  locale="es"
-                  context="signup"
-                  ux_mode="popup"
-                />
-                </div>
-              </div>
-              {googleLoading && (
-                <p className="text-center text-sm text-muted-foreground mt-2">Validando sesión con Google...</p>
-              )}
+              <GoogleAuthButton
+                mode="signup"
+                loading={googleLoading}
+                onSuccess={handleGoogleSuccess}
+                onError={() => setGoogleError("Error al iniciar sesión con Google. Intenta nuevamente.")}
+              />
             </GoogleOAuthProvider>
+          )}
+          {googleLoading && (
+            <p className="mt-2 text-center text-sm text-muted-foreground">Validando sesión con Google...</p>
           )}
         </div>
 
