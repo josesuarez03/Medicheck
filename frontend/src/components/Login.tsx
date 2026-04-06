@@ -33,6 +33,8 @@ const isSafeInternalPath = (path: string | null): path is string => {
   return path.startsWith("/") && !path.startsWith("//");
 };
 
+const isDoctorPath = (path: string) => path === ROUTES.DOCTOR.DASHBOARD || path.startsWith("/doctor/");
+
 /* ── Componente interior (necesita estar dentro del Provider) ─────────── */
 function LoginInner() {
   const router = useRouter();
@@ -57,10 +59,15 @@ function LoginInner() {
     if (!profile || redirecting) return;
     setRedirecting(true);
     if (!profile.is_profile_completed) { router.push(ROUTES.PUBLIC.PROFILE_COMPLETE); return; }
-    if (safeFromRoute && safeFromRoute !== ROUTES.PUBLIC.LOGIN && safeFromRoute !== ROUTES.PUBLIC.HOME) {
+    if (
+      safeFromRoute &&
+      safeFromRoute !== ROUTES.PUBLIC.LOGIN &&
+      safeFromRoute !== ROUTES.PUBLIC.HOME &&
+      !((profile.tipo === "patient") && isDoctorPath(safeFromRoute))
+    ) {
       router.push(safeFromRoute); return;
     }
-    router.push(ROUTES.PROTECTED.DASHBOARD);
+    router.push(profile.tipo === "doctor" ? ROUTES.DOCTOR.DASHBOARD : ROUTES.PROTECTED.DASHBOARD);
   };
 
   const onSubmit = async (data: LoginFormInputs) => {

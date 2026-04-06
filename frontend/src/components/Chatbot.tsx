@@ -587,10 +587,13 @@ export default function Chatbot() {
 
           {messages.length === 0 && !isWaitingBot && !chatError && (
             <div className="flex h-full items-center justify-center">
-              <div className="max-w-md rounded-[1.75rem] border border-border/70 bg-card p-6 text-center shadow-sm">
-                <p className="font-semibold">Inicia una conversación con Hipo</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Escribe tu primer síntoma para comenzar el triaje. El historial de sesiones se consulta desde la vista de historial.
+              <div className="flex max-w-md flex-col items-center text-center">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 shadow-sm ring-8 ring-background/80">
+                  <span className="text-5xl">🤖</span>
+                </div>
+                <h3 className="mt-5 text-3xl font-semibold tracking-tight">Hipo</h3>
+                <p className="mt-2 max-w-sm text-sm leading-7 text-muted-foreground">
+                  Nuevo, cercano y centrado en ayudarte a empezar el triaje con claridad.
                 </p>
               </div>
             </div>
@@ -655,64 +658,66 @@ export default function Chatbot() {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="space-y-3 border-t border-border/70 bg-card px-4 py-4">
-          {!isArchivedConversation && (
-            <div className="flex flex-wrap gap-2">
-              {quickReplies.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className="rounded-full border border-input bg-background px-3 py-1.5 text-sm text-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => applySuggestion(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <form onSubmit={handleSendMessage} className="w-full">
-            <div className="flex items-end gap-2 rounded-[1.75rem] border border-border/80 bg-background px-3 py-3 shadow-sm transition focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15">
-              <div className="flex items-center gap-1 pb-1">
-                <Button type="button" size="icon" variant="ghost" className="rounded-full" aria-label="Adjuntar archivo" disabled={isArchivedConversation}>
-                  <TbPaperclip className="h-5 w-5" />
-                </Button>
-                <Button type="button" size="icon" variant="ghost" className="rounded-full" aria-label="Dictado de voz" disabled={isArchivedConversation}>
-                  <TbMicrophone className="h-5 w-5" />
-                </Button>
+        <div className="border-t border-border/70 bg-card px-4 py-4">
+          <div className="rounded-[1.9rem] border border-border/80 bg-background/95 p-3 shadow-[0_-12px_30px_rgba(15,23,42,0.05)]">
+            {!isArchivedConversation && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {quickReplies.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="rounded-full border border-primary/10 bg-primary/10 px-3.5 py-2 text-sm font-medium text-primary transition hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() => applySuggestion(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
               </div>
-              <Textarea
-                value={input}
-                onChange={(event) => handleInputChange(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-                rows={inputRows}
-                placeholder={
-                  isArchivedConversation
-                    ? "Esta conversación está archivada"
-                    : isConnected
-                      ? "Escribe tu mensaje aquí..."
-                      : isConnecting
-                        ? "Conectando..."
-                        : "Sin conexión con el servidor"
-                }
-                className="min-h-[48px] max-h-36 resize-none border-0 bg-transparent px-1 py-2 shadow-none focus-visible:ring-0"
-                disabled={!isConnected || isWaitingBot || isArchivedConversation}
-                aria-label="Mensaje para el asistente"
-              />
-              <Button
-                type="submit"
-                size="icon"
-                className="h-12 w-12 rounded-full"
-                disabled={!isConnected || !input.trim() || isWaitingBot || isArchivedConversation}
-                title={!isConnected ? "No conectado al servidor" : "Enviar mensaje"}
-                aria-label="Enviar mensaje"
-              >
-                <TbSend className="h-5 w-5" />
-              </Button>
-            </div>
-          </form>
+            )}
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <form onSubmit={handleSendMessage} className="w-full">
+              <div className="flex items-end gap-2 rounded-[1.35rem] border border-border/80 bg-card px-3 py-2 shadow-sm transition focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/15">
+                <Textarea
+                  value={input}
+                  onChange={(event) => handleInputChange(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  rows={inputRows}
+                  placeholder={
+                    isArchivedConversation
+                      ? "Esta conversación está archivada"
+                      : isConnected
+                        ? "Escribe tu mensaje..."
+                        : isConnecting
+                          ? "Conectando..."
+                          : "Sin conexión con el servidor"
+                  }
+                  className="min-h-[46px] max-h-36 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0"
+                  disabled={!isConnected || isWaitingBot || isArchivedConversation}
+                  aria-label="Mensaje para el asistente"
+                />
+                <div className="flex items-center gap-1 pb-1">
+                  <Button type="button" size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Adjuntar archivo" disabled={isArchivedConversation}>
+                    <TbPaperclip className="h-5 w-5" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" className="rounded-full text-muted-foreground" aria-label="Dictado de voz" disabled={isArchivedConversation}>
+                    <TbMicrophone className="h-5 w-5" />
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="h-11 rounded-xl px-4 text-sm font-semibold"
+                    disabled={!isConnected || !input.trim() || isWaitingBot || isArchivedConversation}
+                    title={!isConnected ? "No conectado al servidor" : "Enviar mensaje"}
+                    aria-label="Enviar mensaje"
+                  >
+                    <TbSend className="h-4 w-4" />
+                    Enviar
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <div className="mt-3 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
             <TbCircleDot className="h-4 w-4 text-primary" />
             Hipo orienta y prioriza. El diagnostico definitivo siempre lo da un profesional sanitario.
             <TbClipboardText className="ml-1 h-4 w-4" />

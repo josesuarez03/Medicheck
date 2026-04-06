@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePathname, useRouter } from 'next/navigation';
 
 export default function ContentLayout({ children }: { children: React.ReactNode }) {
-    const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, loading, user } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
     const safePath = pathname || "";
@@ -38,15 +38,28 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
         if (!loading) {
             // Manejar acceso a rutas protegidas cuando no está autenticado
             if (!isAuthenticated && (isProtectedRoute || isDoctorRoute)) {
-                router.push(`${ROUTES.PUBLIC.LOGIN}?from=${encodeURIComponent(safePath)}`);
+                router.replace(`${ROUTES.PUBLIC.LOGIN}?from=${encodeURIComponent(safePath)}`);
                 return;
             }
 
+            if (isAuthenticated && user?.tipo === "doctor" && pathname === ROUTES.PROTECTED.DASHBOARD) {
+                router.replace(ROUTES.DOCTOR.DASHBOARD);
+                return;
+            }
+
+            if (isAuthenticated && user?.tipo === "patient" && isDoctorRoute) {
+                router.replace(ROUTES.PROTECTED.DASHBOARD);
+                return;
+            }
         }
-    }, [isAuthenticated, isProtectedRoute, isDoctorRoute, loading, pathname, router, safePath]);
+    }, [isAuthenticated, isProtectedRoute, isDoctorRoute, loading, pathname, router, safePath, user?.tipo]);
     
     // Mostrar componente de carga mientras se determina el estado de autenticación
     if (loading) {
+        return <Loading />;
+    }
+
+    if (!isAuthenticated && (isProtectedRoute || isDoctorRoute)) {
         return <Loading />;
     }
 

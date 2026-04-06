@@ -189,7 +189,7 @@ function useProvideAuth(): AuthContextValue {
       // Always clear local state even when API logout fails.
     } finally {
       clearSession();
-      router.push(ROUTES.PUBLIC.LOGIN);
+      router.replace(ROUTES.PUBLIC.LOGIN);
     }
   }, [clearSession, router]);
 

@@ -196,9 +196,13 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
+    if (user?.tipo === "doctor") {
+      router.replace(ROUTES.DOCTOR.DASHBOARD);
+      return;
+    }
     if (!user?.id) return;
     void loadDashboard({ silent: false });
-  }, [user?.id, user?.tipo]);
+  }, [router, loadDashboard, user?.id, user?.tipo]);
 
   useEffect(() => {
     if (!user?.id || user?.tipo !== "patient") return;
@@ -255,6 +259,10 @@ export default function DashboardPage() {
         </section>
       </div>
     );
+  }
+
+  if (user?.tipo === "doctor") {
+    return null;
   }
 
   if (error && !hasRenderableData) {

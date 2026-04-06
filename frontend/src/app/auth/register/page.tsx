@@ -110,7 +110,7 @@ export default function Register() {
       router.push(ROUTES.PUBLIC.PROFILE_COMPLETE);
       return;
     }
-    router.push(ROUTES.PROTECTED.DASHBOARD);
+    router.push(profile.tipo === "doctor" ? ROUTES.DOCTOR.DASHBOARD : ROUTES.PROTECTED.DASHBOARD);
   };
 
   const onSubmit = async (data: RegisterFormInputs) => {
