@@ -15,6 +15,8 @@ ClosureIntentName = Literal["closure", "clinical", "ambiguous_question", "ambigu
 _CLOSURE_PATTERNS = (
     r"^(ok|vale|perfecto|entendido|de acuerdo|gracias|ok gracias|vale gracias|gracias hipo)[.! ]*$",
     r"^(ok[, ]+gracias|vale[, ]+perfecto|perfecto[, ]+gracias)[.! ]*$",
+    r"^(?:nada mas|nada más|mas nada|no tengo mas|no tengo más|eso es todo|seria todo|sería todo|eso seria todo|eso sería todo)(?:[,.! ]+(?:gracias|ok|vale|perfecto))?[.! ]*$",
+    r"^(?:ya no|ya no mas|ya no más)(?: tengo| hay)?(?: nada)?(?:[,.! ]+(?:gracias|ok|vale))?[.! ]*$",
 )
 _QUESTION_HINTS = (
     r"\?$",

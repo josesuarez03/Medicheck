@@ -181,7 +181,7 @@ services:
       REDIS_DB_CELERY_RESULTS: ${REDIS_DB_CELERY_RESULTS:-4}
       REDIS_DB_SOCKET_QUEUE: ${REDIS_DB_SOCKET_QUEUE:-5}
       REDIS_DB_EPHEMERAL: ${REDIS_DB_EPHEMERAL:-6}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis:6379/${REDIS_DB_CHAT_BROKER:-3}}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/${REDIS_DB_CELERY_RESULTS:-4}}
       CHAT_QUEUE: ${CHAT_QUEUE:-chat_queue}
       ETL_QUEUE: ${ETL_QUEUE:-etl_queue}
@@ -241,7 +241,7 @@ services:
         condition: service_healthy
     ports:
       - "5555:5555"
-    command: celery --broker=${CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD}@redis:6379/${REDIS_DB_CHAT_BROKER:-3}} --result-backend=${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/${REDIS_DB_CELERY_RESULTS:-4}} flower --port=5555
+    command: celery --broker=${CELERY_BROKER_URL:-amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//} --result-backend=${CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD}@redis:6379/${REDIS_DB_CELERY_RESULTS:-4}} flower --port=5555
     networks:
       - app
 

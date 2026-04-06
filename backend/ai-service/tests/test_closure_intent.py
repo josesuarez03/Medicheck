@@ -15,6 +15,12 @@ class ClosureIntentTests(unittest.TestCase):
         self.assertEqual(result.intent, "closure")
         self.assertTrue(result.should_trigger_etl)
 
+    def test_eso_seria_todo_gracias_triggers_closure(self):
+        with patch("services.closure_intent.detect_entities", return_value={"facts_summary": {}}):
+            result = classify_closure_message("mas nada eso seria todo, gracias")
+        self.assertEqual(result.intent, "closure")
+        self.assertTrue(result.should_trigger_etl)
+
     def test_new_clinical_symptom_keeps_session_open(self):
         with patch(
             "services.closure_intent.detect_entities",
