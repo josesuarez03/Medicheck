@@ -140,15 +140,15 @@ export default function MedicalData() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-blue-800 via-blue-700 to-blue-600 text-white p-6 md:p-8 shadow-lg">
+      <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-primary via-primary to-primary/90 text-white p-6 md:p-8 shadow-lg">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Mis datos médicos</h1>
-            <p className="text-blue-100 mt-2">Consulta tu estado clínico y actualiza tu información de salud.</p>
+            <p className="text-white/85 mt-2">Consulta tu estado clínico y actualiza tu información de salud.</p>
           </div>
           <Button
             variant="outline"
-            className="border-white/35 text-white hover:bg-white/10"
+            className="border-white/35 bg-white/10 text-white hover:bg-white/20"
             onClick={() => getPatientData(true)}
             disabled={refreshing}
           >
@@ -274,7 +274,7 @@ export default function MedicalData() {
               </p>
             </div>
             <Button
-              onClick={() => router.push(ROUTES.PROTECTED.MEDICAL_DATA + '/history')}
+              onClick={() => router.push(ROUTES.PROTECTED.TRIAGE_HISTORY)}
               className="w-full justify-between"
             >
               Ver historial completo

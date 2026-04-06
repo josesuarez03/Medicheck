@@ -1,120 +1,130 @@
-"use client"
+"use client";
 
-import React, { useEffect } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import React, { useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TbUser, TbStethoscope } from "react-icons/tb";
-import { ROUTES } from '@/routes/routePaths';
+import { TbArrowRight, TbStethoscope, TbUser } from "react-icons/tb";
+import { ROUTES } from "@/routes/routePaths";
 
 export default function ProfileType() {
-    const router = useRouter();
-    const [selectedType, setSelectedType] = React.useState<string | null>(null);
+  const router = useRouter();
+  const [selectedType, setSelectedType] = React.useState<string | null>(null);
 
-    // Limpiar el localStorage al cargar la página para permitir nueva selección
-    useEffect(() => {
-        localStorage.removeItem('selectedProfileType');
-    }, []);
+  useEffect(() => {
+    localStorage.removeItem("selectedProfileType");
+  }, []);
 
-    const handleSelect = (type: "patient" | "doctor") => {
-        setSelectedType(type);
-        localStorage.setItem('selectedProfileType', type);
+  const handleSelect = (type: "patient" | "doctor") => {
+    setSelectedType(type);
+    localStorage.setItem("selectedProfileType", type);
+  };
+
+  const handleCreateAccount = () => {
+    if (selectedType) {
+      router.push(`${ROUTES.PUBLIC.REGISTER}?type=${selectedType}`);
     }
+  };
 
-    const handleCreateAccount = () => {
-        if (selectedType) {
-            router.push(`${ROUTES.PUBLIC.REGISTER}?type=${selectedType}`);
-        }
-    }
-
-    return (
-        <div className="container mx-auto max-w-3xl py-12 px-4">
-            <div className="text-center mb-10">
-                <Image
-                    src="/assets/img/logo.png"
-                    alt="Logo"
-                    width={120}
-                    height={120}
-                    className="mx-auto mb-4"
-                />
-                <h1 className="text-3xl font-bold mb-2">¿Cómo deseas usar nuestra plataforma?</h1>
-                <p className="text-gray-500">Selecciona el tipo de perfil que deseas crear</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                {/* Tarjeta para Paciente */}
-                <Card 
-                    className={`p-6 border-2 cursor-pointer transition-all ${
-                        selectedType === 'patient' 
-                            ? 'border-blue-500 ring-2 ring-blue-200' 
-                            : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => handleSelect('patient')}
-                >
-                    <div className="flex justify-between items-start mb-6">
-                        <div className="p-2 rounded-full bg-gray-100">
-                            <TbUser className="w-6 h-6 text-blue-500" />
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 ${
-                            selectedType === 'patient' ? 'border-blue-500 bg-blue-500/20' : 'border-gray-300'
-                        }`}>
-                            {selectedType === 'patient' && (
-                                <div className="w-3 h-3 bg-blue-500 rounded-full m-auto mt-1"></div>
-                            )}
-                        </div>
-                    </div>
-                    <h2 className="text-xl font-bold mb-1">Soy Paciente</h2>
-                    <p className="text-gray-600 text-sm">
-                        Crea un perfil como paciente para encontrar médicos, agendar citas y acceder a tu historial médico.
-                    </p>
-                </Card>
-
-                {/* Tarjeta para Médico */}
-                <Card 
-                    className={`p-6 border-2 cursor-pointer transition-all ${
-                        selectedType === 'doctor' 
-                            ? 'border-blue-500 ring-2 ring-blue-200' 
-                            : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => handleSelect('doctor')}
-                >
-                    <div className="flex justify-between items-start mb-6">
-                        <div className="p-2 rounded-full bg-gray-100">
-                            <TbStethoscope className="w-6 h-6 text-red-500" />
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 ${
-                            selectedType === 'doctor' ? 'border-blue-500 bg-blue-500/20' : 'border-gray-300'
-                        }`}>
-                            {selectedType === 'doctor' && (
-                                <div className="w-3 h-3 bg-blue-500 rounded-full m-auto mt-1"></div>
-                            )}
-                        </div>
-                    </div>
-                    <h2 className="text-xl font-bold mb-1">Soy Médico</h2>
-                    <p className="text-gray-600 text-sm">
-                        Crea un perfil como médico para gestionar tus pacientes, organizar tu agenda y brindar atención de calidad.
-                    </p>
-                </Card>
-            </div>
-
-            <div className="text-center">
-                <Button 
-                    onClick={handleCreateAccount}
-                    disabled={!selectedType} 
-                    className="w-full md:w-1/3 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-md font-medium mb-6"
-                >
-                    Crear Cuenta
-                </Button>
-                
-                <p>
-                    ¿Ya tienes una cuenta?{" "}
-                    <Link href={ROUTES.PUBLIC.LOGIN} className=" text-primary hover:text-primary-dark font-medium">
-                        Inicia sesión aquí
-                    </Link>
-                </p>
-            </div>
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-10">
+      <section className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto flex h-28 w-28 items-center justify-center rounded-[1.8rem] border border-primary/15 bg-primary/10 shadow-sm">
+          <Image src="/assets/img/logo.png" alt="Logo" width={84} height={84} className="rounded-xl" />
         </div>
-    );
+        <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-primary">Registro</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Elige cómo vas a usar MediCheck</h1>
+        <p className="mt-3 text-sm leading-7 text-muted-foreground md:text-base">
+          Selecciona el tipo de acceso para adaptar el registro y mantener una experiencia clara desde el primer paso.
+        </p>
+      </section>
+
+      <div className="mt-10 grid gap-6 md:grid-cols-2">
+        <Card
+          className={`cursor-pointer rounded-[1.75rem] border p-6 transition-all ${
+            selectedType === "patient"
+              ? "border-primary/35 bg-primary/10 shadow-lg shadow-primary/10 ring-2 ring-primary/15"
+              : "border-border/80 bg-card hover:border-primary/20 hover:shadow-sm"
+          }`}
+          onClick={() => handleSelect("patient")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleSelect("patient");
+            }
+          }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+              <TbUser className="h-6 w-6" />
+            </div>
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full border ${
+                selectedType === "patient" ? "border-primary bg-primary/15" : "border-border"
+              }`}
+              aria-hidden="true"
+            >
+              <span className={`h-3 w-3 rounded-full ${selectedType === "patient" ? "bg-primary" : "bg-transparent"}`} />
+            </div>
+          </div>
+          <h2 className="mt-6 text-xl font-semibold tracking-tight">Soy paciente</h2>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            Accede al chat de triaje, tu historial, tus datos clínicos y el seguimiento de citas desde una experiencia simple y guiada.
+          </p>
+        </Card>
+
+        <Card
+          className={`cursor-pointer rounded-[1.75rem] border p-6 transition-all ${
+            selectedType === "doctor"
+              ? "border-primary/35 bg-primary/10 shadow-lg shadow-primary/10 ring-2 ring-primary/15"
+              : "border-border/80 bg-card hover:border-primary/20 hover:shadow-sm"
+          }`}
+          onClick={() => handleSelect("doctor")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              handleSelect("doctor");
+            }
+          }}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+              <TbStethoscope className="h-6 w-6" />
+            </div>
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full border ${
+                selectedType === "doctor" ? "border-primary bg-primary/15" : "border-border"
+              }`}
+              aria-hidden="true"
+            >
+              <span className={`h-3 w-3 rounded-full ${selectedType === "doctor" ? "bg-primary" : "bg-transparent"}`} />
+            </div>
+          </div>
+          <h2 className="mt-6 text-xl font-semibold tracking-tight">Soy profesional</h2>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            Entra al panel clínico para revisar pacientes, validar entradas del chatbot y preparar la agenda asistencial.
+          </p>
+        </Card>
+      </div>
+
+      <div className="mt-8 text-center">
+        <Button onClick={handleCreateAccount} disabled={!selectedType} className="min-h-12 w-full rounded-2xl md:w-80">
+          Continuar con el registro
+          <TbArrowRight className="h-4 w-4" />
+        </Button>
+        <p className="mt-5 text-sm text-muted-foreground">
+          ¿Ya tienes una cuenta?
+          <Link href={ROUTES.PUBLIC.LOGIN} className="ml-2 font-medium text-primary hover:underline">
+            Inicia sesión aquí
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
 }

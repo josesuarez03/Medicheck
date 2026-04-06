@@ -530,3 +530,4 @@ skills-lock.json
 /docs/architecture
 /docs/academic
 .venv.*
+.stitch

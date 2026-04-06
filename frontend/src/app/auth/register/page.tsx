@@ -175,23 +175,31 @@ export default function Register() {
   const googleUnavailable = useMemo(() => !googleClientId || googleClientId.trim().length === 0, [googleClientId]);
 
   return (
-    <Card className="card-elevated w-full max-w-md mx-auto p-4 sm:p-6">
-      <CardHeader>
-        <CardTitle className="text-center">
-          <Image src="/assets/img/logo.png" alt="Logo" width={96} height={96} className="mx-auto mb-3" />
-          <div className="flex items-center justify-center text-2xl font-semibold">
+    <Card className="w-full max-w-[34rem] rounded-[2rem] border-border/80 bg-card/95 p-4 shadow-xl shadow-primary/10 sm:p-7">
+      <CardHeader className="space-y-4 pb-2">
+        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[1.75rem] border border-primary/15 bg-primary/10">
+          <Image src="/assets/img/logo.png" alt="Logo" width={72} height={72} className="rounded-xl" />
+        </div>
+        <div className="space-y-2 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Nueva cuenta</p>
+          <CardTitle className="text-center">
+          <div className="flex items-center justify-center text-2xl font-semibold tracking-tight">
             {type === "doctor" ? (
-              <TbUserCircle className="w-7 h-7 mr-2 text-blue-500" />
+              <TbUserCircle className="w-7 h-7 mr-2 text-primary" />
             ) : (
-              <TbUsers className="w-7 h-7 mr-2 text-blue-500" />
+              <TbUsers className="w-7 h-7 mr-2 text-primary" />
             )}
             Registro como {getUserTypeText()}
           </div>
-        </CardTitle>
+          </CardTitle>
+          <p className="text-sm leading-7 text-muted-foreground">
+            Crea tu acceso y luego completaras el perfil para paciente o profesional dentro de la aplicacion.
+          </p>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-2">
         {(authError || error || googleError) && (
-          <Alert variant="destructive" className="mb-4">
+          <Alert variant="destructive" className="mb-4 rounded-2xl">
             <AlertDescription className="flex items-center">
               <TbAlertTriangle className="w-5 h-5 mr-2" />
               <span>{authError || error || googleError}</span>
@@ -199,15 +207,25 @@ export default function Register() {
           </Alert>
         )}
 
-        <div className="mb-4">
+        <div className="mb-5 rounded-[1.5rem] border border-primary/10 bg-primary/[0.035] p-4 shadow-sm">
+          <div className="mb-3 flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <TbBrandGoogle className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Registro rapido</p>
+              <p className="mt-1 text-sm text-muted-foreground">Puedes empezar con Google y completar despues tu perfil dentro de la aplicacion.</p>
+            </div>
+          </div>
           {googleUnavailable ? (
-            <Button type="button" variant="secondary" className="w-full" disabled>
+            <Button type="button" variant="secondary" className="w-full rounded-full" disabled>
               <TbBrandGoogle className="w-5 h-5 mr-2" />
               Google no disponible
             </Button>
           ) : (
             <GoogleOAuthProvider clientId={googleClientId}>
-              <div className="flex justify-center">
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-background px-3 py-3 shadow-inner">
+                <div className="flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
                   onError={() => setGoogleError("Error al iniciar sesión con Google. Intenta nuevamente.")}
@@ -221,6 +239,7 @@ export default function Register() {
                   context="signup"
                   ux_mode="popup"
                 />
+                </div>
               </div>
               {googleLoading && (
                 <p className="text-center text-sm text-muted-foreground mt-2">Validando sesión con Google...</p>
@@ -229,61 +248,62 @@ export default function Register() {
           )}
         </div>
 
-        <Separator className="my-4" />
+        <Separator className="my-5" />
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <Label className="flex items-center">
-              <TbMail className="w-5 h-5 mr-2 text-gray-500" />
+        <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <Label className="mb-2 flex items-center">
+              <TbMail className="w-5 h-5 mr-2 text-primary" />
               Email
             </Label>
-            <Input type="email" {...register("email")} />
+            <Input type="email" {...register("email")} className="min-h-12 rounded-2xl bg-background" />
             {errors.email && <p className="text-red-500 text-sm">{errors.email.message}</p>}
           </div>
           <div>
-            <Label className="flex items-center">
-              <TbAt className="w-5 h-5 mr-2 text-gray-500" />
-              Nombre de usuario
-            </Label>
-            <Input type="text" {...register("username")} />
-            {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
-          </div>
-          <div>
-            <Label className="flex items-center">
-              <TbUser className="w-5 h-5 mr-2 text-gray-500" />
+            <Label className="mb-2 flex items-center">
+              <TbUser className="w-5 h-5 mr-2 text-primary" />
               Nombre
             </Label>
-            <Input type="text" {...register("first_name")} />
+            <Input type="text" {...register("first_name")} className="min-h-12 rounded-2xl bg-background" />
             {errors.first_name && <p className="text-red-500 text-sm">{errors.first_name.message}</p>}
           </div>
           <div>
-            <Label className="flex items-center">
-              <TbUsers className="w-5 h-5 mr-2 text-gray-500" />
+            <Label className="mb-2 flex items-center">
+              <TbUsers className="w-5 h-5 mr-2 text-primary" />
               Apellido
             </Label>
-            <Input type="text" {...register("last_name")} />
+            <Input type="text" {...register("last_name")} className="min-h-12 rounded-2xl bg-background" />
             {errors.last_name && <p className="text-red-500 text-sm">{errors.last_name.message}</p>}
           </div>
+          <div className="md:col-span-2">
+            <Label className="mb-2 flex items-center">
+              <TbAt className="w-5 h-5 mr-2 text-primary" />
+              Nombre de usuario
+            </Label>
+            <Input type="text" {...register("username")} className="min-h-12 rounded-2xl bg-background" />
+            {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
+          </div>
           <div>
-            <Label className="flex items-center">
-              <TbLock className="w-5 h-5 mr-2 text-gray-500" />
+            <Label className="mb-2 flex items-center">
+              <TbLock className="w-5 h-5 mr-2 text-primary" />
               Contraseña
             </Label>
-            <Input type="password" {...register("password")} />
+            <Input type="password" {...register("password")} className="min-h-12 rounded-2xl bg-background" />
             {errors.password && <p className="text-red-500 text-sm">{errors.password.message}</p>}
           </div>
           <div>
-            <Label className="flex items-center">
-              <TbCheckbox className="w-5 h-5 mr-2 text-gray-500" />
+            <Label className="mb-2 flex items-center">
+              <TbCheckbox className="w-5 h-5 mr-2 text-primary" />
               Confirmar Contraseña
             </Label>
-            <Input type="password" {...register("confirmPassword")} />
+            <Input type="password" {...register("confirmPassword")} className="min-h-12 rounded-2xl bg-background" />
             {errors.confirmPassword && <p className="text-red-500 text-sm">{errors.confirmPassword.message}</p>}
           </div>
 
           <input type="hidden" {...register("tipo")} />
 
-          <Button type="submit" className="w-full" disabled={loading || authLoading || googleLoading}>
+          <div className="md:col-span-2">
+          <Button type="submit" className="w-full min-h-12 rounded-2xl text-base" disabled={loading || authLoading || googleLoading}>
             {loading || authLoading ? (
               <>
                 <TbLoader className="animate-spin h-5 w-5 mr-2" />
@@ -296,12 +316,13 @@ export default function Register() {
               </>
             )}
           </Button>
+          </div>
         </form>
       </CardContent>
-      <CardFooter className="text-center">
+      <CardFooter className="pt-2 text-center">
         <p className="w-full">
           ¿Ya tienes cuenta?
-          <Link href={ROUTES.PUBLIC.LOGIN} className="text-blue-600 hover:underline ml-2">
+          <Link href={ROUTES.PUBLIC.LOGIN} className="ml-2 font-medium text-primary hover:underline">
             Inicia sesión
           </Link>
         </p>

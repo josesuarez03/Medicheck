@@ -20,14 +20,6 @@ export function middleware(request: NextRequest) {
   const dashboardPath = ROUTES.PROTECTED.DASHBOARD;
   const loginPath = ROUTES.PUBLIC.LOGIN;
 
-  if (pathname === ROUTES.PUBLIC.ROOT_LOGIN) {
-    if (isAuthenticated) {
-      return NextResponse.redirect(new URL(dashboardPath, request.url));
-    } else {
-      return NextResponse.redirect(new URL(loginPath, request.url));
-    }
-  }
-
   if (pathname === loginPath) {
     if (isAuthenticated) {
       return NextResponse.redirect(new URL(dashboardPath, request.url));

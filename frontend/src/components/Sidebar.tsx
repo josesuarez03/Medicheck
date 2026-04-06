@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "./ui/button";
 import {
+  TbBriefcaseMedical,
   TbHome,
   TbReportMedical,
   TbLogout,
@@ -15,8 +16,8 @@ import {
   TbUserPlus,
   TbClipboardList,
   TbSettings,
-  TbActivityHeartbeat,
-  TbFileAnalytics,
+  TbCalendarEvent,
+  TbClipboardCheck,
 } from "react-icons/tb";
 import { useAuth } from "@/hooks/useAuth";
 import { usePathname } from "next/navigation";
@@ -29,6 +30,9 @@ const iconMap: Record<string, React.ReactNode> = {
   UserGroupIcon: <TbUserPlus />,
   DocumentChartBarIcon: <TbClipboardList />,
   StethoscopeIcon: <TbStethoscope />,
+  ActivityIcon: <TbClipboardList />,
+  CalendarIcon: <TbCalendarEvent />,
+  ClipboardCheckIcon: <TbClipboardCheck />,
 };
 
 export default function Sidebar() {
@@ -45,22 +49,24 @@ export default function Sidebar() {
   if (!isAuthenticated) return null;
 
   const isDoctor = user?.tipo === "doctor";
+  const isActivePath = (path: string) =>
+    pathname === path || Boolean(pathname && pathname.startsWith(`${path}/`));
 
   const navItemClass = (active: boolean) =>
-    `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+    `group relative flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
       active
-        ? "bg-blue-700 dark:bg-[#2E5CE6] text-white shadow-md before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-blue-300 dark:before:bg-[#9AB0FF]"
-        : "text-white/75 hover:bg-white/10 hover:text-white"
+        ? "bg-white/14 text-white shadow-md before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-white"
+        : "nav-muted-text hover:bg-white/10 hover:text-white"
     }`;
 
   return (
     <aside
-      className={`h-screen shrink-0 bg-blue-800 dark:bg-[#08142E] text-white border-r border-white/10 dark:border-[#243864]/80 transition-all duration-300 ${
+      className={`nav-shell h-screen shrink-0 border-r border-white/10 transition-all duration-300 ${
         isExpanded ? "w-60" : "w-[74px]"
       }`}
     >
       <div className="h-full flex flex-col">
-        <div className="px-3 py-4 border-b border-white/10 dark:border-[#243864]/80">
+        <div className="px-3 py-4 border-b border-white/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 overflow-hidden">
               <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow">
@@ -83,16 +89,16 @@ export default function Sidebar() {
         <div className="px-3 py-3">
           <Link
             href={ROUTES.PROTECTED.PROFILE}
-            className="flex items-center gap-3 rounded-xl border border-white/20 dark:border-[#2A3F6C] bg-white/10 dark:bg-white/5 p-3 hover:bg-white/15 dark:hover:bg-white/10 transition"
+            className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/8 p-3 transition hover:bg-white/14"
           >
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-300 to-blue-500 text-white text-sm font-semibold flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-white/14 text-white text-sm font-semibold flex items-center justify-center">
               {initials}
             </div>
             {isExpanded && (
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{`${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Usuario"}</p>
-                <p className="text-xs text-blue-100 dark:text-[#B8CBFF] flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-300 dark:bg-emerald-300" />
+                <p className="text-xs nav-muted-text flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-300" />
                   {isDoctor ? "Médico · Activo" : "Paciente · Activo"}
                 </p>
               </div>
@@ -101,60 +107,47 @@ export default function Sidebar() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-2 pb-2">
-          {isExpanded && <p className="px-2 pt-2 pb-1 text-[11px] uppercase tracking-[0.12em] text-white/40 dark:text-[#7E92C5]">Principal</p>}
+          {isExpanded && (
+            <div className="mx-2 mb-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+                  <TbBriefcaseMedical className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-white/55">
+                    {isDoctor ? "Flujo médico" : "Área de paciente"}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-white">
+                    {isDoctor ? "Panel profesional" : "Panel personal"}
+                  </p>
+                  <p className="mt-1 text-xs nav-muted-text">
+                    {isDoctor ? "Prioriza revisión, pacientes y citas." : "Accede rápido a chat, datos y seguimiento."}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
-            {NAVIGATION_ITEMS.main.map((item) => (
-              <Link key={item.path} href={item.path} className={navItemClass(pathname === item.path)}>
+            {(isDoctor ? NAVIGATION_ITEMS.doctor : NAVIGATION_ITEMS.main).map((item) => (
+              <Link key={item.path} href={item.path} className={navItemClass(isActivePath(item.path))}>
                 <span className="text-lg">{iconMap[item.icon] || <TbHome />}</span>
                 {isExpanded && <span>{item.name === "Chat" ? "Chat · Hipo" : item.name}</span>}
               </Link>
             ))}
           </div>
-
-          {isExpanded && <p className="px-2 pt-5 pb-1 text-[11px] uppercase tracking-[0.12em] text-white/40 dark:text-[#7E92C5]">Historial</p>}
-          <div className="space-y-1">
-            <button type="button" className={navItemClass(false) + " w-full text-left"}>
-              <span className="text-lg">
-                <TbActivityHeartbeat />
-              </span>
-              {isExpanded && <span>Mis triajes</span>}
-            </button>
-            <button type="button" className={navItemClass(false) + " w-full text-left"}>
-              <span className="text-lg">
-                <TbFileAnalytics />
-              </span>
-              {isExpanded && <span>Informes</span>}
-            </button>
-          </div>
-
-          {isDoctor && (
-            <>
-              {isExpanded && (
-                <p className="px-2 pt-5 pb-1 text-[11px] uppercase tracking-[0.12em] text-white/40 dark:text-[#7E92C5]">Doctor</p>
-              )}
-              <div className="space-y-1">
-                {NAVIGATION_ITEMS.doctor.map((item) => (
-                  <Link key={item.path} href={item.path} className={navItemClass(pathname === item.path)}>
-                    <span className="text-lg">{iconMap[item.icon] || <TbHome />}</span>
-                    {isExpanded && <span>{item.name}</span>}
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
         </nav>
 
-        <div className="px-2 py-3 border-t border-white/10 dark:border-[#243864]/80 space-y-1">
-          <button type="button" className={navItemClass(false) + " w-full text-left"}>
+        <div className="px-2 py-3 border-t border-white/10 space-y-1">
+          <Link href={ROUTES.PROTECTED.PROFILE} className={navItemClass(isActivePath(ROUTES.PROTECTED.PROFILE))}>
             <span className="text-lg">
               <TbSettings />
             </span>
-            {isExpanded && <span>Configuración</span>}
-          </button>
+            {isExpanded && <span>Perfil y ajustes</span>}
+          </Link>
           <button
             type="button"
             onClick={logout}
-            className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-blue-100 hover:bg-red-500/15 hover:text-red-100 transition"
+            className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/90 hover:bg-red-500/15 hover:text-red-100 transition"
           >
             <span className="text-lg">
               <TbLogout />

@@ -1,8 +1,8 @@
 export const ROUTES = {
     // Public routes
     PUBLIC: {
-      LOGIN: '/auth/login', // Ruta alternativa para login
-      ROOT_LOGIN: '/', // Ruta raíz como login
+      HOME: '/',
+      LOGIN: '/auth/login',
       REGISTER: '/auth/register',
       PROFILE_TYPE: '/auth/profile-type',
       RECOVER_PASSWORD: '/auth/recover-password',
@@ -19,12 +19,17 @@ export const ROUTES = {
       PROFILE_DELETE_ACCOUNT: '/profile/delete-account',
       CHAT: '/chat',
       MEDICAL_DATA: '/medical-data',
+      TRIAGE_HISTORY: '/triage-history',
+      APPOINTMENTS: '/appointments',
+      APPOINTMENT_NEW: '/appointments/new',
     },
     
     // Doctor-specific routes
     DOCTOR: {
+      DASHBOARD: '/doctor/dashboard',
       PATIENTS: '/doctor/patients',
-      MEDICAL_DATA: '/doctor/medical-data',
+      VALIDATIONS: '/doctor/validations',
+      APPOINTMENTS: '/doctor/appointments',
     }
   };
   
@@ -34,13 +39,17 @@ export const ROUTES = {
     main: [
       { name: 'Dashboard', path: ROUTES.PROTECTED.DASHBOARD, icon: 'HomeIcon' },
       { name: 'Chat', path: ROUTES.PROTECTED.CHAT, icon: 'ChatBubbleOvalLeftIcon' },
-      { name: 'Medical Data', path: ROUTES.PROTECTED.MEDICAL_DATA, icon: 'ClipboardDocumentListIcon' },
+      { name: 'Historial', path: ROUTES.PROTECTED.TRIAGE_HISTORY, icon: 'ActivityIcon' },
+      { name: 'Datos clínicos', path: ROUTES.PROTECTED.MEDICAL_DATA, icon: 'ClipboardDocumentListIcon' },
+      { name: 'Citas', path: ROUTES.PROTECTED.APPOINTMENTS, icon: 'CalendarIcon' },
     ],
     
     // Doctor-specific navigation
     doctor: [
+      { name: 'Dashboard', path: ROUTES.DOCTOR.DASHBOARD, icon: 'HomeIcon' },
       { name: 'Patients', path: ROUTES.DOCTOR.PATIENTS, icon: 'UserGroupIcon' },
-      { name: 'Medical Data', path: ROUTES.DOCTOR.MEDICAL_DATA, icon: 'DocumentChartBarIcon' },
+      { name: 'Validaciones', path: ROUTES.DOCTOR.VALIDATIONS, icon: 'ClipboardCheckIcon' },
+      { name: 'Citas', path: ROUTES.DOCTOR.APPOINTMENTS, icon: 'CalendarIcon' },
     ],
     
     // Profile-related links

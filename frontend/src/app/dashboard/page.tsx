@@ -233,7 +233,7 @@ export default function DashboardPage() {
   if (loading && !initialLoadDone) {
     return (
       <div className="space-y-6">
-        <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-blue-800 via-blue-700 to-blue-600 p-6 md:p-8">
+        <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-primary via-primary to-primary/90 p-6 md:p-8">
           <Skeleton className="h-4 w-28 bg-white/25" />
           <Skeleton className="h-12 w-80 mt-4 bg-white/30" />
           <Skeleton className="h-5 w-[28rem] mt-4 bg-white/25" />
@@ -273,31 +273,31 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-blue-800 via-blue-700 to-blue-600 text-white p-6 md:p-8 shadow-lg relative">
+      <section className="rounded-3xl overflow-hidden bg-gradient-to-r from-primary via-primary to-primary/90 text-white p-6 md:p-8 shadow-lg relative">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_80%,rgba(255,255,255,0.09),transparent_35%),radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.09),transparent_30%)]" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div>
-            <p className="uppercase tracking-[0.1em] text-blue-200 text-xs md:text-sm font-semibold">Dashboard</p>
+            <p className="uppercase tracking-[0.1em] text-white/70 text-xs md:text-sm font-semibold">Dashboard</p>
             <h2 className="text-3xl md:text-5xl font-bold tracking-tight mt-1">
-              Bienvenido, <span className="text-blue-200">{user?.first_name || "Usuario"}</span>
+              Bienvenido, <span className="text-white/75">{user?.first_name || "Usuario"}</span>
             </h2>
-            <p className="mt-3 text-blue-100 max-w-xl">
+            <p className="mt-3 text-white/85 max-w-xl">
               {isEmpty
                 ? "Empieza tu primer triaje para activar tu historial y métricas reales."
                 : "Tus métricas se actualizan automáticamente con tu actividad de triaje."}
             </p>
-            <p className="mt-3 text-xs text-blue-100/90">
+            <p className="mt-3 text-xs text-white/75">
               {refreshing ? "Actualizando datos..." : "Panel sincronizado"}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button className="bg-white text-blue-800 hover:bg-blue-50" onClick={() => router.push(ROUTES.PROTECTED.CHAT)}>
+            <Button className="bg-white text-primary hover:bg-white/90" onClick={() => router.push(ROUTES.PROTECTED.CHAT)}>
               <TbMessageCircle className="h-4 w-4 mr-2" />
               {isEmpty ? "Iniciar primer triaje" : "Iniciar triaje"}
             </Button>
             <Button
               variant="outline"
-              className="bg-white/15 border-white/60 text-white hover:bg-white/25 hover:text-white"
+              className="bg-white/10 border-white/35 text-white hover:bg-white/20 hover:text-white"
               onClick={() => router.push(ROUTES.PROTECTED.MEDICAL_DATA)}
             >
               <TbReportMedical className="h-4 w-4 mr-2" />
@@ -319,7 +319,7 @@ export default function DashboardPage() {
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="card-elevated rounded-2xl">
           <CardContent className="pt-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
               <TbActivityHeartbeat className="h-6 w-6" />
             </div>
             <div>
@@ -330,7 +330,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="card-elevated rounded-2xl">
           <CardContent className="pt-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
               <TbChecklist className="h-6 w-6" />
             </div>
             <div>
@@ -343,7 +343,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="card-elevated rounded-2xl">
           <CardContent className="pt-5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
               <TbCalendarEvent className="h-6 w-6" />
             </div>
             <div>
@@ -366,7 +366,7 @@ export default function DashboardPage() {
             label: "Mi historial",
             subtitle: "Revisa registros anteriores",
             icon: <TbFileText className="h-5 w-5" />,
-            action: () => router.push(ROUTES.PROTECTED.MEDICAL_DATA),
+            action: () => router.push(ROUTES.PROTECTED.TRIAGE_HISTORY),
           },
           {
             label: "Medicamentos",
@@ -378,7 +378,7 @@ export default function DashboardPage() {
             label: "Próxima revisión",
             subtitle: nextCheckupLabel(patient?.data_validated_at),
             icon: <TbCalendarEvent className="h-5 w-5" />,
-            action: () => router.push(ROUTES.PROTECTED.MEDICAL_DATA),
+            action: () => router.push(ROUTES.PROTECTED.APPOINTMENTS),
           },
         ].map((item) => (
           <button
@@ -386,7 +386,7 @@ export default function DashboardPage() {
             onClick={item.action}
             className="card-elevated rounded-2xl bg-card p-5 text-left hover:shadow-md transition border border-border/70"
           >
-            <div className="w-11 h-11 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex items-center justify-center">
+            <div className="w-11 h-11 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
               {item.icon}
             </div>
             <p className="font-semibold mt-4 text-foreground">{item.label}</p>
@@ -400,7 +400,7 @@ export default function DashboardPage() {
           <CardContent className="pt-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-2xl font-semibold tracking-tight">Historial de triajes</h3>
-              <Button variant="ghost" className="text-blue-700 dark:text-blue-300" onClick={() => router.push(ROUTES.PROTECTED.MEDICAL_DATA)}>
+              <Button variant="ghost" className="text-primary" onClick={() => router.push(ROUTES.PROTECTED.TRIAGE_HISTORY)}>
                 Ver todos
                 <TbArrowRight className="h-4 w-4 ml-1" />
               </Button>
@@ -419,7 +419,7 @@ export default function DashboardPage() {
               <div className="space-y-3">
                 {history.map((item) => (
                   <div key={item.id} className="rounded-xl border border-border/70 p-4 bg-background/80 flex items-start gap-3 overflow-hidden">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium break-words line-clamp-2">{entryTitle(item)}</p>
                       <p className="text-sm text-muted-foreground break-words">{relativeTimeEs(item.created_at)}</p>
@@ -440,7 +440,7 @@ export default function DashboardPage() {
             <div className="space-y-3">
               <div className="rounded-xl border border-border/70 p-4 bg-background/80">
                 <p className="font-semibold text-foreground flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-200">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
                     <TbDroplet className="h-4 w-4" />
                   </span>
                   Hidratación
@@ -451,7 +451,7 @@ export default function DashboardPage() {
               </div>
               <div className="rounded-xl border border-border/70 p-4 bg-background/80">
                 <p className="font-semibold text-foreground flex items-center gap-2">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-200">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
                     <TbMoonStars className="h-4 w-4" />
                   </span>
                   Descanso

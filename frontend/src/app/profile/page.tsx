@@ -69,7 +69,7 @@ export default function UserProfile() {
   return (
     <div className="space-y-5 max-w-6xl mx-auto">
       <Card className="surface-card overflow-hidden">
-        <CardHeader className="border-b bg-gradient-to-r from-blue-800 via-blue-700 to-blue-600 text-white">
+        <CardHeader className="border-b bg-gradient-to-r from-primary via-primary to-primary/90 text-white">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center justify-center w-14 h-14 rounded-full bg-white/20 text-white text-2xl">
@@ -79,7 +79,7 @@ export default function UserProfile() {
                 <CardTitle className="text-3xl font-semibold">
                   {user.first_name} {user.last_name}
                 </CardTitle>
-                <p className="text-blue-100">{user.email}</p>
+                <p className="text-white/80">{user.email}</p>
                 <span className="pill mt-2 bg-white/20 text-white border border-white/30">
                   {user.tipo === "patient" ? "Paciente" : "Doctor"}
                 </span>
@@ -87,7 +87,7 @@ export default function UserProfile() {
             </div>
             <Button
               onClick={() => router.push(ROUTES.PROTECTED.PROFILE_EDIT)}
-              className="bg-white text-blue-700 hover:bg-blue-50"
+              className="bg-white text-primary hover:bg-white/90"
             >
               <TbEdit className="mr-2 h-4 w-4" />
               Editar perfil

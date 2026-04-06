@@ -18,7 +18,7 @@ export function useAppRouter() {
         router.push(path);
       }
     },
-    toHome: () => router.push(ROUTES.PUBLIC.ROOT_LOGIN),
+    toHome: () => router.push(ROUTES.PUBLIC.HOME),
     toRegister: () => router.push(ROUTES.PUBLIC.REGISTER),
     toProfileType: () => router.push(ROUTES.PUBLIC.PROFILE_TYPE),
     toCompleteProfile: () => router.push(ROUTES.PUBLIC.PROFILE_COMPLETE),
@@ -41,10 +41,14 @@ export function useAppRouter() {
     toDeleteAccount: () => router.push(ROUTES.PROTECTED.PROFILE_DELETE_ACCOUNT),
     toChat: () => router.push(ROUTES.PROTECTED.CHAT),
     toMedicalData: () => router.push(ROUTES.PROTECTED.MEDICAL_DATA),
+    toTriageHistory: () => router.push(ROUTES.PROTECTED.TRIAGE_HISTORY),
+    toAppointments: () => router.push(ROUTES.PROTECTED.APPOINTMENTS),
 
     // Doctor routes
+    toDoctorDashboard: () => router.push(ROUTES.DOCTOR.DASHBOARD),
     toPatients: () => router.push(ROUTES.DOCTOR.PATIENTS),
-    toDoctorMedicalData: () => router.push(ROUTES.DOCTOR.MEDICAL_DATA),
+    toDoctorValidations: () => router.push(ROUTES.DOCTOR.VALIDATIONS),
+    toDoctorAppointments: () => router.push(ROUTES.DOCTOR.APPOINTMENTS),
   };
 
   return {

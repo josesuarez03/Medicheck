@@ -3,10 +3,19 @@
 @tailwind utilities;
 
 @layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     font-family: var(--font-app), "Segoe UI", sans-serif;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
+    text-rendering: optimizeLegibility;
   }
 
   button,
@@ -29,14 +38,14 @@
     --primary: 206 69% 47%;  /* #2583CC */
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 216 23% 87%;  /* #D5DEE9 */
-    --secondary-foreground: 210 40% 2%;
+    --secondary: 206 46% 93%;
+    --secondary-foreground: 210 40% 12%;
 
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215 20% 33%;
+    --muted-foreground: 214 22% 36%;
 
-    --accent: 209 58% 93%;    /* Basado en un tono claro de los azules */
-    --accent-foreground: 210 40% 2%;
+    --accent: 206 58% 95%;
+    --accent-foreground: 210 40% 10%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
@@ -44,50 +53,77 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 206 69% 47%;     /* #2583CC */
+    --ring-offset: 0 0% 100%;
 
     --chart-1: 206 69% 47%;   /* #2583CC */
-    --chart-2: 216 23% 87%;   /* #D5DEE9 */
+    --chart-2: 206 46% 93%;
     --chart-3: 209 77% 20%;   /* #083560 */
     --chart-4: 195 89% 64%;   /* #53C4F5 */
     --chart-5: 210 44% 60%;   /* #7097BE */
 
     --radius: 0.5rem;
+    --surface-soft: 206 80% 97%;
+    --surface-strong: 206 58% 92%;
+    --success: 154 67% 37%;
+    --warning: 38 78% 47%;
+    --danger: 0 53% 54%;
+    --nav: 206 69% 36%;
+    --nav-foreground: 210 40% 98%;
+    --nav-muted: 208 100% 90%;
   }
 
   .dark {
-    --background: 223 56% 12%;
+    --background: 219 53% 12%;
     --foreground: 210 40% 98%;
 
-    --card: 221 34% 20%;
+    --card: 219 37% 18%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 221 34% 20%;
+    --popover: 219 37% 18%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 224 88% 62%;
-    --primary-foreground: 223 56% 12%;
+    --primary: 206 69% 47%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 220 30% 24%;
+    --secondary: 217 30% 23%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 221 30% 24%;
-    --muted-foreground: 216 24% 75%;
+    --muted: 218 27% 22%;
+    --muted-foreground: 215 20% 76%;
 
-    --accent: 223 33% 26%;
+    --accent: 217 34% 25%;
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 223 30% 29%;
-    --input: 223 30% 29%;
-    --ring: 224 88% 62%;
+    --border: 217 24% 28%;
+    --input: 217 24% 28%;
+    --ring: 206 69% 47%;
+    --ring-offset: 219 53% 12%;
+    --surface-soft: 218 33% 16%;
+    --surface-strong: 218 28% 20%;
+    --success: 151 54% 48%;
+    --warning: 39 83% 58%;
+    --danger: 0 71% 61%;
+    --nav: 219 58% 14%;
+    --nav-foreground: 210 40% 98%;
+    --nav-muted: 214 28% 74%;
+  }
+
+  ::selection {
+    background: rgba(37, 131, 204, 0.18);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
 }
 
 @layer components {
   .page-container {
-    @apply mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8;
+    @apply mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8;
   }
 
   .section-header {
@@ -107,7 +143,7 @@
   }
 
   .surface-card-interactive {
-    @apply rounded-2xl border border-border/70 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-blue-200 focus-within:ring-2 focus-within:ring-blue-300;
+    @apply rounded-2xl border border-border/70 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 focus-within:ring-2 focus-within:ring-primary/30;
   }
 
   .pill {
@@ -116,6 +152,48 @@
 
   .section-title {
     @apply text-xl md:text-2xl font-semibold tracking-tight;
+  }
+
+  .hero-panel {
+    @apply rounded-[2rem] border border-border/80 bg-card text-card-foreground shadow-xl shadow-primary/10 backdrop-blur;
+  }
+
+  .metric-card {
+    @apply rounded-[1.5rem] border border-border/70 bg-card p-5 shadow-sm;
+  }
+
+  .metric-label {
+    @apply text-sm text-muted-foreground;
+  }
+
+  .metric-value {
+    @apply mt-2 text-3xl font-semibold tracking-tight text-foreground;
+  }
+
+  .subtle-grid {
+    background-image:
+      linear-gradient(to right, rgba(37, 131, 204, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(37, 131, 204, 0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .clinical-shell {
+    @apply rounded-[1.75rem] border border-border/80 bg-card/95 shadow-sm;
+  }
+
+  .nav-shell {
+    background: hsl(var(--nav));
+    color: hsl(var(--nav-foreground));
+  }
+
+  .nav-muted-text {
+    color: hsl(var(--nav-muted));
+  }
+
+  .auth-shell {
+    background:
+      radial-gradient(circle at top left, rgba(37, 131, 204, 0.18), transparent 28%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-soft)) 100%);
   }
 }
 
