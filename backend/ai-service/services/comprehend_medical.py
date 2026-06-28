@@ -51,6 +51,89 @@ _HISTORY_TERMS = {"asma", "diabetes", "hipertension", "migraña", "migraña", "a
 _FUNCTIONAL_TERMS = {"no puedo", "me impide", "me cuesta", "no me deja", "afecta"}
 _NEGATION_PATTERN = re.compile(r"\b(no|sin|niego|ningun|ninguna)\b", re.IGNORECASE)
 
+# --- Diccionario de senales psicologicas/emocionales (espanol + coloquial
+# venezolano). Las claves estan ya normalizadas (sin acentos, minusculas) para
+# casar con normalize_clinical_text. Foco: respuesta a desastre / apoyo
+# psicologico dentro y fuera de Venezuela.
+# Inspirado conceptualmente en la estructura de Primeros Auxilios Psicologicos
+# (OMS/OPS): identificar exposicion, malestar agudo, duelo, red de apoyo y
+# riesgo vital; expresado en redaccion propia.
+_SUICIDAL_RISK_PHRASES = (
+    "me quiero morir", "no quiero vivir", "no quiero seguir viviendo",
+    "mejor muerto", "mejor estar muerto", "quitarme la vida", "quitarme la vida",
+    "acabar con todo", "acabar con mi vida", "hacerme dano", "me quiero matar",
+    "me voy a matar", "no vale la pena vivir", "no aguanto mas la vida",
+    "desaparecer para siempre", "ya no quiero existir", "para que seguir",
+)
+_GRIEF_PHRASES = (
+    "perdi a", "murio mi", "se murio", "fallecio", "se me fue", "perdimos a",
+    "duelo", "estoy de luto", "ya no esta conmigo", "lo perdi", "la perdi",
+    "perdi a mi familia", "perdi mi casa", "perdi todo",
+)
+_EMOTIONAL_STATE_PHRASES = (
+    "angustia", "ansiedad", "mucho miedo", "tengo miedo", "tristeza",
+    "estoy triste", "deprimido", "deprimida", "desesperado", "desesperada",
+    "agobiado", "abrumado", "no puedo dejar de llorar", "me siento muy mal",
+    "estoy destrozado", "estoy destrozada", "estoy muy mal", "no doy mas",
+    "me siento vacio", "sin esperanza", "impotencia", "culpa",
+)
+_CRISIS_STATE_PHRASES = (
+    "ataque de panico", "crisis de panico", "ataque de ansiedad",
+    "no puedo respirar", "me esta dando algo", "no controlo", "estoy colapsando",
+    "no puedo mas", "me va a dar algo", "siento que me muero", "me tiembla todo",
+)
+_TRAUMA_EXPOSURE_PHRASES = (
+    "terremoto", "temblor", "sismo", "replica", "derrumbe", "se cayo el edificio",
+    "escombros", "quede atrapado", "quede atrapada", "bajo los escombros",
+    "vi morir", "pesadillas", "no puedo dormir por", "revivo", "flashbacks",
+    "lo revivo", "no me lo puedo sacar de la cabeza",
+)
+_SOCIAL_SUPPORT_PHRASES = (
+    "estoy solo", "estoy sola", "nadie me ayuda", "no tengo a nadie",
+    "lejos de mi familia", "no puedo contactar", "no se nada de mi familia",
+    "no se nada de mi", "estoy aislado", "estoy aislada", "no tengo apoyo",
+    "estoy lejos", "no puedo estar con ellos",
+)
+
+_PSYCH_PHRASE_GROUPS = (
+    # (frases, categoria, rol)
+    (_SUICIDAL_RISK_PHRASES, "SUICIDAL_RISK", "suicidal_risk"),
+    (_CRISIS_STATE_PHRASES, "CRISIS_STATE", "psych_signal"),
+    (_TRAUMA_EXPOSURE_PHRASES, "TRAUMA_EXPOSURE", "psych_signal"),
+    (_GRIEF_PHRASES, "GRIEF", "psych_signal"),
+    (_EMOTIONAL_STATE_PHRASES, "EMOTIONAL_STATE", "psych_signal"),
+    (_SOCIAL_SUPPORT_PHRASES, "SOCIAL_SUPPORT", "psych_signal"),
+)
+
+
+def extract_psych_signals(text: str) -> list[MedicalFact]:
+    """Detecta senales psicologicas/emocionales por diccionario en espanol.
+
+    Importante: estas frases son expresiones AFIRMATIVAS del estado emocional y
+    muchas contienen 'no' ("no quiero vivir"); por eso se marcan negated=False
+    explicitamente y no se pasan por la heuristica de negacion generica, que de
+    otro modo descartaria erroneamente el riesgo suicida.
+    """
+    normalized = normalize_clinical_text(text)
+    facts: list[MedicalFact] = []
+    for phrases, category, role in _PSYCH_PHRASE_GROUPS:
+        for phrase in phrases:
+            if phrase in normalized:
+                confidence = 0.9 if category == "SUICIDAL_RISK" else 0.7
+                facts.append(
+                    MedicalFact(
+                        text=phrase,
+                        normalized_text=normalize_clinical_text(phrase),
+                        category=category,
+                        clinical_role=role,
+                        temporality=_temporality(text),
+                        negated=False,
+                        confidence=confidence,
+                        source="rule",
+                    )
+                )
+    return facts
+
 
 def detect_medical_context(messages):
     context_prompt = f"""
@@ -337,6 +420,11 @@ def detect_entities(text, context=None):
     facts = merge_medical_facts(all_spacy_facts, all_comprehend_facts)
     if not facts:
         facts = _extract_with_rules_only(text)
+    # Senales psicologicas: extraidas sobre el texto completo (no por segmento)
+    # para no perder frases multi-palabra, y combinadas con el resto.
+    psych_facts = extract_psych_signals(text)
+    if psych_facts:
+        facts = merge_medical_facts(facts, psych_facts)
     summary = build_facts_summary(facts)
     context_analysis = detect_medical_context([{"content": text}]) if context else None
     result = ClinicalExtractionResult(

@@ -38,8 +38,14 @@ def _hash_embedding(text: str, dimension: int = _FALLBACK_DIMENSION) -> list[flo
 
 def should_embed(signal_score: float, facts: list[MedicalFact]) -> bool:
     has_clinical_fact = any(
-        fact.clinical_role in {"chief_complaint", "duration", "pain_scale", "red_flag"}
-        or fact.category in {"SYMPTOM", "MEDICATION", "ALLERGY", "MEDICAL_HISTORY"}
+        fact.clinical_role in {"chief_complaint", "duration", "pain_scale", "red_flag", "psych_signal", "suicidal_risk"}
+        or fact.category in {
+            "SYMPTOM", "MEDICATION", "ALLERGY", "MEDICAL_HISTORY",
+            # Señales psicologicas: tratadas como senal de primera clase para que
+            # una conversacion puramente emocional (duelo, angustia, crisis,
+            # riesgo suicida) tambien genere embedding y alimente el contexto.
+            "EMOTIONAL_STATE", "TRAUMA_EXPOSURE", "SUICIDAL_RISK", "GRIEF", "CRISIS_STATE",
+        }
         for fact in facts
         if not fact.negated
     )
@@ -60,6 +66,9 @@ def _ordered_fields(summary: FactsSummary) -> list[tuple[str, str]]:
         ("alergias", ", ".join(summary.allergies)),
         ("antecedentes", ", ".join(summary.history)),
         ("impacto_funcional", ", ".join(summary.functional_impact)),
+        ("riesgo_suicida", ", ".join(summary.suicidal_risk)),
+        ("exposicion_trauma", ", ".join(summary.trauma_indicators)),
+        ("senales_psicologicas", ", ".join(summary.psych_signals)),
     ]
 
 

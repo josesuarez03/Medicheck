@@ -1,0 +1,46 @@
+case_id: ansiedad_separacion_case
+name: Ansiedad por familiares desaparecidos o sin contacto
+intent_keywords:
+  - no sé nada de mi familia
+  - no logro contactar
+  - no me contesta
+  - está desaparecido
+  - no aparece
+  - no sé si está vivo
+  - perdí contacto
+  - no hay señal
+  - no se comunican
+  - estoy desesperado por saber
+  - no sé dónde está
+  - lo estoy buscando
+  - mi familiar no aparece
+required_fields:
+  - who
+  - last_contact
+  - actions_taken
+  - emotional_state
+tree:
+  - id: separacion_q1
+    field: who
+    question: "Entiendo tu angustia. ¿De quién no tienes noticias?"
+    triage_hint: moderate
+    rule_id: separacion_rule_who
+  - id: separacion_q2
+    field: last_contact
+    question: "¿Cuándo fue la última vez que supiste de esa persona?"
+    triage_hint: moderate
+    rule_id: separacion_rule_contact
+  - id: separacion_q3
+    field: actions_taken
+    question: "¿Ya intentaste con vecinos, otros familiares, hospitales o canales oficiales de búsqueda?"
+    triage_hint: moderate
+    rule_id: separacion_rule_actions
+  - id: separacion_q4
+    field: emotional_state
+    question: "¿Cómo estás llevando la espera? ¿Estás durmiendo y comiendo?"
+    triage_hint: moderate
+    rule_id: separacion_rule_emotional
+advice:
+  Leve: "La incertidumbre es de lo más difícil de sostener. Mientras buscas, intenta canalizar la angustia: registra a quién has contactado, apóyate en otros familiares y túrnense para descansar. Las fallas de telefonía e internet tras el sismo hacen que el silencio no signifique lo peor."
+  Moderado: "Es agotador no saber. Usa canales oficiales de búsqueda y registro de personas; en Venezuela, Protección Civil (0800-558.84.27 / 0800-266.84.46) puede orientarte. Cuida tu descanso y alimentación: necesitas fuerzas para la búsqueda. Hablar con alguien de confianza o un psicólogo puede aliviar la angustia."
+  Severo: "Esta angustia te está desbordando y mereces apoyo. Busca acompañamiento de un psicólogo o profesional de salud mental, y no enfrentes la búsqueda en soledad. Si sientes que no puedes más o aparecen pensamientos de hacerte daño, trátalo como emergencia: en Venezuela 171; fuera de Venezuela, número de emergencias local."

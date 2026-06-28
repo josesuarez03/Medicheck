@@ -125,6 +125,34 @@ class VectorStore:
                     ON rag.user_summary_embeddings (summary_version)
                 """
             )
+            connection.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS rag.conditions_catalog (
+                    id serial PRIMARY KEY,
+                    condition_id varchar(100) NOT NULL UNIQUE,
+                    name varchar(200) NOT NULL,
+                    category varchar(20) NOT NULL DEFAULT 'physical',
+                    synonyms jsonb NOT NULL DEFAULT '[]'::jsonb,
+                    signals jsonb NOT NULL DEFAULT '[]'::jsonb,
+                    urgency_level varchar(20) NOT NULL DEFAULT 'moderate',
+                    next_step varchar(50) NOT NULL DEFAULT 'doctor',
+                    country_context varchar(10) NOT NULL DEFAULT 'ALL',
+                    description text NULL,
+                    source varchar(200) NULL,
+                    embedding vector({self.embedding_dimensions}) NULL,
+                    embedding_model text NULL,
+                    embedding_text text NULL,
+                    created_at timestamptz NOT NULL DEFAULT NOW(),
+                    updated_at timestamptz NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_conditions_catalog_country
+                    ON rag.conditions_catalog (country_context)
+                """
+            )
             self.__class__._schema_ready = True
 
     def ensure_ready(self) -> bool:
@@ -447,6 +475,155 @@ class VectorStore:
         if value is None:
             return None
         return str(value)
+
+    # --- Catalogo de condiciones (RAG para ai-service) ---------------------
+
+    def upsert_condition(
+        self,
+        *,
+        condition_id: str,
+        name: str,
+        category: str,
+        synonyms: list[str],
+        signals: list[str],
+        urgency_level: str,
+        next_step: str,
+        country_context: str,
+        description: str | None,
+        source: str | None,
+        embedding: list[float],
+        embedding_model: str,
+        embedding_text: str,
+    ) -> bool:
+        """Inserta o actualiza una condicion del catalogo (upsert por condition_id)."""
+        if not self.enabled:
+            return False
+        vector_literal = self._vector_literal(embedding)
+        query = """
+            INSERT INTO rag.conditions_catalog (
+                condition_id, name, category, synonyms, signals, urgency_level,
+                next_step, country_context, description, source, embedding,
+                embedding_model, embedding_text, updated_at
+            )
+            VALUES (
+                %(condition_id)s, %(name)s, %(category)s, %(synonyms)s::jsonb,
+                %(signals)s::jsonb, %(urgency_level)s, %(next_step)s,
+                %(country_context)s, %(description)s, %(source)s, %(embedding)s::vector,
+                %(embedding_model)s, %(embedding_text)s, NOW()
+            )
+            ON CONFLICT (condition_id) DO UPDATE SET
+                name = EXCLUDED.name,
+                category = EXCLUDED.category,
+                synonyms = EXCLUDED.synonyms,
+                signals = EXCLUDED.signals,
+                urgency_level = EXCLUDED.urgency_level,
+                next_step = EXCLUDED.next_step,
+                country_context = EXCLUDED.country_context,
+                description = EXCLUDED.description,
+                source = EXCLUDED.source,
+                embedding = EXCLUDED.embedding,
+                embedding_model = EXCLUDED.embedding_model,
+                embedding_text = EXCLUDED.embedding_text,
+                updated_at = NOW()
+        """
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    query,
+                    {
+                        "condition_id": condition_id,
+                        "name": name,
+                        "category": category,
+                        "synonyms": json.dumps(synonyms, ensure_ascii=False),
+                        "signals": json.dumps(signals, ensure_ascii=False),
+                        "urgency_level": urgency_level,
+                        "next_step": next_step,
+                        "country_context": country_context,
+                        "description": description,
+                        "source": source,
+                        "embedding": vector_literal,
+                        "embedding_model": embedding_model,
+                        "embedding_text": embedding_text,
+                    },
+                )
+        except Exception as exc:
+            logger.warning("Could not upsert condition %s: %s", condition_id, exc)
+            return False
+        return True
+
+    def get_relevant_conditions(
+        self,
+        *,
+        query_embedding: list[float],
+        top_k: int = 3,
+        country: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Recupera las condiciones mas relevantes por similitud coseno.
+
+        Si se indica `country` (ej. 'VE'), incluye condiciones country_context
+        'ALL' o ese pais; para usuarios fuera de Venezuela se filtran las
+        condiciones marcadas como especificas de VE.
+        """
+        if not self.enabled or not query_embedding:
+            return []
+        vector_literal = self._vector_literal(query_embedding)
+        if not vector_literal:
+            return []
+        normalized_country = (country or "").strip().upper() or None
+        query = """
+            SELECT
+                condition_id,
+                name,
+                category,
+                synonyms,
+                signals,
+                urgency_level,
+                next_step,
+                country_context,
+                description,
+                source,
+                1 - (embedding <=> %(embedding)s::vector) AS score
+            FROM rag.conditions_catalog
+            WHERE embedding IS NOT NULL
+              AND (
+                    country_context = 'ALL'
+                    OR %(country)s::text IS NULL
+                    OR country_context = %(country)s::text
+              )
+            ORDER BY embedding <=> %(embedding)s::vector
+            LIMIT %(limit)s
+        """
+        try:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    query,
+                    {
+                        "embedding": vector_literal,
+                        "country": normalized_country,
+                        "limit": top_k,
+                    },
+                ).fetchall()
+        except Exception as exc:
+            logger.warning("Could not fetch relevant conditions: %s", exc)
+            return []
+        results = []
+        for row in rows:
+            results.append(
+                {
+                    "condition_id": row.get("condition_id"),
+                    "name": row.get("name"),
+                    "category": row.get("category"),
+                    "synonyms": row.get("synonyms", []) or [],
+                    "signals": row.get("signals", []) or [],
+                    "urgency_level": row.get("urgency_level"),
+                    "next_step": row.get("next_step"),
+                    "country_context": row.get("country_context"),
+                    "description": row.get("description"),
+                    "source": row.get("source"),
+                    "score": float(row.get("score", 0.0) or 0.0),
+                }
+            )
+        return results
 
     def _normalize_search_row(self, row: dict[str, Any]) -> dict[str, Any]:
         return {

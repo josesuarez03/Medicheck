@@ -17,8 +17,15 @@ logger = logging.getLogger(__name__)
 
 class DjangoClinicalSummaryClient:
     def __init__(self):
-        self.base_url = (Config.DJANGO_API_URL_FLASK or Config.DJANGO_API_URL or "").rstrip("/")
-        self.shared_secret = Config.FLASK_API_KEY or ""
+        # Django fue eliminado en esta rama; las variables DJANGO_API_URL* ya no
+        # existen en Config. getattr defensivo -> enabled = False de forma segura,
+        # preservando el archivo por si se reconecta otro origen de resumen clinico.
+        self.base_url = (
+            getattr(Config, "DJANGO_API_URL_FLASK", None)
+            or getattr(Config, "DJANGO_API_URL", None)
+            or ""
+        ).rstrip("/")
+        self.shared_secret = getattr(Config, "INTERNAL_SHARED_SECRET", None) or ""
 
     @property
     def enabled(self) -> bool:

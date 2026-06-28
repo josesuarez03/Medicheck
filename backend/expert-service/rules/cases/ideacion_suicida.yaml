@@ -1,0 +1,45 @@
+case_id: ideacion_suicida_case
+name: Ideación suicida o riesgo de autolesión (escala siempre)
+# NOTA: este caso esta listado en psychological_case_ids y las frases de riesgo
+# estan en psychological_crisis_flags de emergency.yaml/json, por lo que el
+# emergency_guard ESCALA de inmediato (emergency_triggered=True) antes de
+# recorrer este arbol. El arbol existe como respaldo si el match de intencion
+# ocurre sin disparar un crisis_flag exacto; aun asi todos los niveles de
+# advice derivan a ayuda profesional urgente.
+intent_keywords:
+  - no quiero vivir
+  - me quiero morir
+  - me quiero matar
+  - quitarme la vida
+  - hacerme daño
+  - mejor muerto
+  - no aguanto más
+  - acabar con todo
+  - no le veo sentido a la vida
+  - no vale la pena vivir
+  - estaría mejor sin mí
+  - desaparecer para siempre
+required_fields:
+  - safety
+  - plan
+  - support
+tree:
+  - id: ideacion_q1
+    field: safety
+    question: "Lamento mucho que estés pasando por esto. ¿Estás a salvo en este momento?"
+    triage_hint: severe
+    rule_id: ideacion_rule_safety
+  - id: ideacion_q2
+    field: support
+    question: "¿Hay alguien de confianza que pueda acompañarte ahora mismo?"
+    triage_hint: severe
+    rule_id: ideacion_rule_support
+  - id: ideacion_q3
+    field: plan
+    question: "¿Has pensado en cómo hacerte daño o tienes algo planeado?"
+    triage_hint: severe
+    rule_id: ideacion_rule_plan
+advice:
+  Leve: "Tu vida importa y no tienes que cargar esto solo/a. Por favor habla hoy mismo con un psicólogo o profesional de salud mental, y busca a alguien de confianza para acompañarte. Si en algún momento sientes que podrías hacerte daño, trátalo como una emergencia."
+  Moderado: "Esto es serio y mereces ayuda ahora. Contacta de inmediato a un profesional de salud mental y no te quedes solo/a. En Venezuela llama al 171 o a Protección Civil (0800-558.84.27 / 0800-266.84.46); fuera de Venezuela, al número de emergencias o a una línea de prevención del suicidio de tu país."
+  Severo: "Tu seguridad es lo más importante ahora mismo. No te quedes solo/a y busca ayuda de emergencia de inmediato. En Venezuela llama al 171 o a Protección Civil; fuera de Venezuela, al número de emergencias local o a una línea de prevención del suicidio. Si hay riesgo inminente, acude a urgencias ya. Estoy contigo en este mensaje, pero necesitas apoyo humano presencial ahora."

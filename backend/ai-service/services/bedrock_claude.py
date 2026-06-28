@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import Any
 
 try:
@@ -15,6 +16,12 @@ from config.config import Config
 
 
 logger = logging.getLogger(__name__)
+
+# Limitador de concurrencia hacia Bedrock. Se usa threading.BoundedSemaphore
+# (no asyncio.Semaphore) porque call_claude es sincrono y se ejecuta tanto
+# desde rutas async como desde el threadpool; el semaforo de hilos acota las
+# invocaciones reales sin importar el contexto. Bound = limita en proceso/worker.
+_BEDROCK_SEMAPHORE = threading.BoundedSemaphore(max(1, Config.BEDROCK_MAX_CONCURRENCY))
 TARGET_MAX_INPUT_TOKENS = 1200
 SYSTEM_PROMPT_COMPACT = (
     "Eres Hipo, asistente de triaje médico inicial. "
@@ -88,11 +95,36 @@ def build_turn_prompt(context_bundle: dict[str, Any], initial_prompt: str | None
         if rendered:
             sections.append(("global_memory", "Memoria longitudinal: " + " || ".join(rendered)))
 
+    # Condiciones recuperadas del catalogo (RAG) por similitud semantica del
+    # turno. Contexto de apoyo para el presunto diagnostico/recomendacion; no
+    # reemplaza el juicio del modelo ni fuerza respuestas de plantilla.
+    conditions_context = (context_bundle.get("conditions_context", []) or [])[:3]
+    if conditions_context:
+        rendered = []
+        for item in conditions_context:
+            name = item.get("name", "")
+            if not name:
+                continue
+            urgency = item.get("urgency_level", "")
+            next_step = item.get("next_step", "")
+            signals = ", ".join((item.get("signals") or [])[:4])
+            rendered.append(
+                f"{name} (urgencia: {urgency}; sugerencia: {next_step}; senales: {signals})"
+            )
+        if rendered:
+            sections.append(
+                (
+                    "conditions_context",
+                    "Condiciones de referencia que podrian relacionarse (no son un "
+                    "diagnostico; usa tu juicio): " + " || ".join(rendered),
+                )
+            )
+
     questions_selected = (context_bundle.get("questions_selected", []) or [])[:2]
     if questions_selected:
         sections.append(("questions", "Preguntas pendientes: " + " | ".join(questions_selected)))
 
-    section_priority = ["global_memory", "retrieved_memory", "recent_turns", "questions", "patient_profile"]
+    section_priority = ["global_memory", "retrieved_memory", "recent_turns", "questions", "conditions_context", "patient_profile"]
     while True:
         prompt_text = "\n\n".join(section_text for _, section_text in sections if section_text.strip())
         used_estimate = estimate_tokens(prompt_text)
@@ -146,6 +178,14 @@ def call_claude(prompt, triage_level=None, max_tokens=400, temperature=0.1, init
         }
     )
 
+    # Acotar concurrencia: el exceso espera brevemente; si no obtiene turno
+    # dentro del timeout, se rechaza con un error claro en vez de saturar Bedrock.
+    acquired = _BEDROCK_SEMAPHORE.acquire(timeout=Config.BEDROCK_ACQUIRE_TIMEOUT_SECONDS)
+    if not acquired:
+        raise RuntimeError(
+            "Servicio de IA saturado (limite de concurrencia hacia Bedrock). "
+            "Reintenta en unos segundos."
+        )
     try:
         response = client.invoke_model(modelId=model_id, body=body, contentType="application/json")
         result = json.loads(response["body"].read())
@@ -163,3 +203,5 @@ def call_claude(prompt, triage_level=None, max_tokens=400, temperature=0.1, init
     except Exception as exc:
         logger.error("Can't invoke '%s'. Reason: %s", model_id, exc)
         raise
+    finally:
+        _BEDROCK_SEMAPHORE.release()

@@ -1,0 +1,46 @@
+case_id: duelo_migratorio_case
+name: Duelo y angustia a distancia (diáspora / fuera de Venezuela)
+intent_keywords:
+  - estoy lejos y no puedo hacer nada
+  - me siento impotente
+  - no puedo estar con ellos
+  - estoy en otro país
+  - estoy fuera del país
+  - me siento culpable por no estar
+  - quisiera estar allá
+  - no puedo viajar
+  - veo todo por noticias
+  - me duele desde la distancia
+  - mi familia está allá y yo aquí
+  - emigré y ahora pasa esto
+  - culpa del que se fue
+required_fields:
+  - location
+  - affected_ones
+  - emotional_state
+  - support_here
+tree:
+  - id: migratorio_q1
+    field: location
+    question: "Entiendo, estás lejos de Venezuela. ¿Desde dónde me escribes?"
+    triage_hint: moderate
+    rule_id: migratorio_rule_location
+  - id: migratorio_q2
+    field: affected_ones
+    question: "¿Quiénes de tu gente están afectados por lo que pasó?"
+    triage_hint: moderate
+    rule_id: migratorio_rule_affected
+  - id: migratorio_q3
+    field: emotional_state
+    question: "¿Qué es lo que más pesa: la impotencia, la culpa por no estar, el miedo por ellos?"
+    triage_hint: moderate
+    rule_id: migratorio_rule_emotional
+  - id: migratorio_q4
+    field: support_here
+    question: "¿Tienes con quién hablar de esto donde estás ahora?"
+    triage_hint: moderate
+    rule_id: migratorio_rule_support
+advice:
+  Leve: "Sufrir a distancia es real y muy duro; la impotencia y la culpa del que está lejos son reacciones comunes, no una falla tuya. Ayuda mantener contacto en lo posible, apoyar de formas concretas (coordinar, enviar recursos, difundir búsquedas) y hablar de lo que sientes con personas cercanas donde estás."
+  Moderado: "Lo que cargas merece acompañamiento. Considera hablar con un psicólogo o profesional de salud mental en tu país de residencia; el duelo migratorio combinado con esta catástrofe pesa mucho. Pon límites al consumo constante de noticias y busca comunidad de venezolanos cerca de ti."
+  Severo: "Esta angustia te está sobrepasando, aunque estés físicamente a salvo. Busca apoyo de un psicólogo o profesional de salud mental donde resides. Si aparecen pensamientos de hacerte daño, trátalo como emergencia y llama al número de emergencias de tu país o a una línea de prevención del suicidio local. No tienes que cargar esto en soledad."

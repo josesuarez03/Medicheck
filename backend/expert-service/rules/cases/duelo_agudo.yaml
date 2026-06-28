@@ -1,0 +1,46 @@
+case_id: duelo_agudo_case
+name: Duelo agudo por pérdida de familiares o seres queridos
+intent_keywords:
+  - perdí a
+  - se me murió
+  - falleció
+  - murió mi
+  - perdimos a
+  - se me fue
+  - estoy de luto
+  - duelo
+  - no puedo creer que ya no está
+  - perdí a mi familia
+  - enterramos a
+  - me quedé sin
+  - se lo llevó el terremoto
+required_fields:
+  - loss
+  - time_since
+  - support
+  - functional_impact
+tree:
+  - id: duelo_q1
+    field: loss
+    question: "Lamento mucho tu pérdida. ¿Quieres contarme a quién perdiste?"
+    triage_hint: moderate
+    rule_id: duelo_rule_loss
+  - id: duelo_q2
+    field: time_since
+    question: "¿Hace cuánto ocurrió?"
+    triage_hint: moderate
+    rule_id: duelo_rule_time
+  - id: duelo_q3
+    field: support
+    question: "¿Tienes a alguien cerca que te acompañe en este momento?"
+    triage_hint: moderate
+    rule_id: duelo_rule_support
+  - id: duelo_q4
+    field: functional_impact
+    question: "¿Cómo está afectando tu sueño, tu apetito o tus ganas de seguir el día a día?"
+    triage_hint: moderate
+    rule_id: duelo_rule_functional
+advice:
+  Leve: "Tu dolor es válido y el duelo lleva su tiempo. Permítete sentir, apóyate en personas de confianza y cuida lo básico: descanso, comida y agua. Hablar de quien perdiste puede aliviar. No hay una forma 'correcta' de vivir esto."
+  Moderado: "Estás cargando un dolor muy grande. Acompañarte con un psicólogo o grupo de apoyo en duelo puede ayudarte a transitarlo. Mantén cerca a tus personas de confianza y date permiso de pedir ayuda con las tareas diarias."
+  Severo: "Este duelo te está sobrepasando y mereces apoyo profesional ahora. Busca a un psicólogo o profesional de salud mental. Si sientes que no quieres seguir viviendo o piensas en hacerte daño, trátalo como emergencia: en Venezuela llama al 171; fuera de Venezuela, al número de emergencias o línea de crisis local."

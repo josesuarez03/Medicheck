@@ -22,6 +22,15 @@ FactCategory = Literal[
     "FUNCTIONAL_IMPACT",
     "RED_FLAG",
     "DEMOGRAPHIC",
+    # Señales psicologicas/emocionales (foco de la rama de respuesta a desastre).
+    # SUICIDAL_RISK es la senal psicologica de maxima prioridad, equivalente a
+    # RED_FLAG en lo fisico: debe escalar siempre.
+    "EMOTIONAL_STATE",
+    "TRAUMA_EXPOSURE",
+    "SUICIDAL_RISK",
+    "GRIEF",
+    "SOCIAL_SUPPORT",
+    "CRISIS_STATE",
     "UNKNOWN",
 ]
 
@@ -36,6 +45,8 @@ ClinicalRole = Literal[
     "red_flag",
     "demographic",
     "context",
+    "psych_signal",
+    "suicidal_risk",
 ]
 
 Temporality = Literal["current", "recent", "past", "chronic", "unknown"]
@@ -71,6 +82,10 @@ class FactsSummary(BaseModel):
     severity_terms: list[str] = Field(default_factory=list)
     functional_impact: list[str] = Field(default_factory=list)
     risk_factors: list[str] = Field(default_factory=list)
+    # Señales psicologicas/emocionales.
+    psych_signals: list[str] = Field(default_factory=list)
+    trauma_indicators: list[str] = Field(default_factory=list)
+    suicidal_risk: list[str] = Field(default_factory=list)
 
 
 class ClinicalExtractionResult(BaseModel):
@@ -138,6 +153,12 @@ def build_facts_summary(facts: list[MedicalFact]) -> FactsSummary:
             summary.risk_factors.append(fact.normalized_text)
         elif fact.category == "RED_FLAG":
             summary.red_flags.append(fact.normalized_text)
+        elif fact.category == "SUICIDAL_RISK":
+            summary.suicidal_risk.append(fact.normalized_text)
+        elif fact.category == "TRAUMA_EXPOSURE":
+            summary.trauma_indicators.append(fact.normalized_text)
+        elif fact.category in {"EMOTIONAL_STATE", "GRIEF", "SOCIAL_SUPPORT", "CRISIS_STATE"}:
+            summary.psych_signals.append(fact.normalized_text)
 
         if fact.clinical_role == "pain_scale" and isinstance(fact.value, (int, float)):
             fact_value = int(fact.value)
@@ -155,4 +176,7 @@ def build_facts_summary(facts: list[MedicalFact]) -> FactsSummary:
     summary.severity_terms = dedupe_keep_order(summary.severity_terms)
     summary.functional_impact = dedupe_keep_order(summary.functional_impact)
     summary.risk_factors = dedupe_keep_order(summary.risk_factors)
+    summary.psych_signals = dedupe_keep_order(summary.psych_signals)
+    summary.trauma_indicators = dedupe_keep_order(summary.trauma_indicators)
+    summary.suicidal_risk = dedupe_keep_order(summary.suicidal_risk)
     return summary

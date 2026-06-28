@@ -2,9 +2,21 @@ import json
 import logging
 from datetime import datetime, timedelta
 import uuid
-from bson import Binary
-from bson.binary import UuidRepresentation
-from pymongo import ASCENDING, DESCENDING
+
+# MongoDB eliminado en esta rama (ai-microservices-disaster). Los imports de
+# bson/pymongo se mantienen protegidos para no romper si la libreria no esta
+# instalada; ya no se usan en el flujo (Redis es el unico backend de
+# conversaciones activas).
+try:  # pragma: no cover
+    from bson import Binary
+    from bson.binary import UuidRepresentation
+    from pymongo import ASCENDING, DESCENDING
+except Exception:  # pragma: no cover
+    Binary = None
+    UuidRepresentation = None
+    ASCENDING = 1
+    DESCENDING = -1
+
 from data.connect import mongo_db, redis_client
 from services.encryption import Encryption
 
@@ -18,20 +30,46 @@ LIFECYCLE_ALLOWED = {LIFECYCLE_ACTIVE, LIFECYCLE_ARCHIVED, LIFECYCLE_DELETED}
 SOFT_DELETE_RETENTION_DAYS = 30
 ENCRYPTED_CONVERSATION_SCHEMA_VERSION = 2
 
+
+# --- Cifrado de campos sensibles para Redis ---------------------------------
+# Mismo esquema que ConversationalDatasetManager usaba para Mongo: se cifran
+# los campos `messages` y `medical_context` con Fernet antes de almacenar.
+
+def _conv_encryption():
+    return Encryption()
+
+
+def _encrypt_conv_field(value):
+    if value is None:
+        return value
+    serialized = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
+    return _conv_encryption().encrypt_string(serialized)
+
+
+def _decrypt_conv_field(value):
+    if value in (None, ""):
+        return value
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(_conv_encryption().decrypt_string(value))
+    except Exception:
+        try:
+            return json.loads(value)
+        except Exception:
+            return value
+
 class ConversationalDatasetManager:
     
     def __init__(self):
-        try:
-            self.collection = mongo_db['conversations']
-            self._ensure_indexes()
-            logger.info("ConversationalDatasetManager inicializado correctamente")
-        except Exception as e:
-            logger.error(f"Error al inicializar ConversationalDatasetManager: {str(e)}")
-            raise
-
-    def _ensure_indexes(self):
-        self.collection.create_index([("user_id", ASCENDING), ("lifecycle_status", ASCENDING), ("timestamp", DESCENDING)])
-        self.collection.create_index([("purge_after", ASCENDING)], expireAfterSeconds=0)
+        # MongoDB eliminado: el unico backend de conversaciones activas es Redis
+        # (RedisCacheManager). Se mantiene `self.collection = None` para que el
+        # codigo legado que lo consultaba con manejo defensivo no rompa.
+        self.collection = None
+        self._cache = RedisCacheManager
+        logger.info("ConversationalDatasetManager inicializado sobre Redis (sin Mongo)")
 
     def _normalize_lifecycle_status(self, conversation):
         if not isinstance(conversation, dict):
@@ -132,34 +170,11 @@ class ConversationalDatasetManager:
     ):
         try:
             conversation_id = str(conversation_id or uuid.uuid4())
-            now = datetime.now()
-            conversation = {
-                "user_id": user_id,
-                "_id": self._uuid_to_binary(conversation_id),
-                "symptoms": symptoms,
-                "symptoms_pattern": symptoms_pattern,
-                "pain_scale": pain_scale,
-                "triaje_level": triaje_level,
-                "medical_context": medical_context,
-                "messages": messages,
-                "timestamp": now,
-                "active": True,
-                "lifecycle_status": LIFECYCLE_ACTIVE,
-                "archived_at": None,
-                "deleted_at": None,
-                "purge_after": None,
-            }
-            self.collection.insert_one(self._encrypt_sensitive_fields(conversation))
-            logger.info(f"Conversación {conversation_id} agregada a MongoDB para el usuario {user_id}")
-            
-            # También guardar en Redis con expiración de 24 horas
-            try:
-                RedisCacheManager.guardar_conversacion(user_id, conversation_id, medical_context, messages, 
-                                                     symptoms, symptoms_pattern, pain_scale, triaje_level)
-                logger.info(f"Conversación {conversation_id} agregada a Redis para el usuario {user_id}")
-            except Exception as redis_error:
-                logger.warning(f"Error al guardar en Redis, continuando solo con MongoDB: {str(redis_error)}")
-            
+            RedisCacheManager.guardar_conversacion(
+                user_id, conversation_id, medical_context, messages,
+                symptoms, symptoms_pattern, pain_scale, triaje_level,
+            )
+            logger.info(f"Conversación {conversation_id} agregada a Redis para el usuario {user_id}")
             return conversation_id
         except Exception as e:
             logger.error(f"Error al agregar conversación: {str(e)}")
@@ -171,19 +186,24 @@ class ConversationalDatasetManager:
             if selected_view not in {"active", "archived", "all"}:
                 selected_view = "active"
 
-            base_query = {"user_id": user_id, "$or": [{"lifecycle_status": {"$exists": False}}, {"lifecycle_status": {"$ne": LIFECYCLE_DELETED}}]}
-            if selected_view == "active":
-                query = {"$and": [base_query, {"$or": [{"lifecycle_status": LIFECYCLE_ACTIVE}, {"lifecycle_status": {"$exists": False}, "active": {"$ne": False}}]}]}
-            elif selected_view == "archived":
-                query = {"$and": [base_query, {"$or": [{"lifecycle_status": LIFECYCLE_ARCHIVED}, {"lifecycle_status": {"$exists": False}, "active": False}]}]}
-            else:
-                query = base_query
-
-            conversations = self.collection.find(query).sort("timestamp", DESCENDING)
+            # Redis es el unico backend: se leen todas las conversaciones del
+            # indice del usuario y se filtra por lifecycle_status en Python
+            # (volumen bajo por usuario, TTL 24h).
+            raw_conversations = RedisCacheManager.obtener_todas_conversaciones(user_id)
             result = []
-            for conv in conversations:
-                result.append(self._serialize_conversation_record(conv))
-            logger.info(f"Recuperadas {len(result)} conversaciones de MongoDB para el usuario {user_id}")
+            for conv in raw_conversations:
+                conv = self._apply_lifecycle_backfill(conv)
+                status = self._normalize_lifecycle_status(conv)
+                if status == LIFECYCLE_DELETED:
+                    continue
+                if selected_view == "active" and status != LIFECYCLE_ACTIVE:
+                    continue
+                if selected_view == "archived" and status != LIFECYCLE_ARCHIVED:
+                    continue
+                result.append(conv)
+
+            result.sort(key=lambda c: str(c.get("timestamp") or ""), reverse=True)
+            logger.info(f"Recuperadas {len(result)} conversaciones de Redis para el usuario {user_id}")
             return result
         except Exception as e:
             logger.error(f"Error al obtener conversaciones para el usuario {user_id}: {str(e)}")
@@ -191,39 +211,25 @@ class ConversationalDatasetManager:
 
     def get_conversation(self, user_id, conversation_id, include_deleted=False):
         try:
-            # Primero intentar obtener de Redis
-            try:
-                cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
-                if cached_conversation:
-                    cached_conversation = self._apply_lifecycle_backfill(cached_conversation)
-                    lifecycle_status = self._normalize_lifecycle_status(cached_conversation)
-                    if lifecycle_status == LIFECYCLE_DELETED and not include_deleted:
-                        return None
-                    logger.info(f"Conversación {conversation_id} recuperada de Redis para el usuario {user_id}")
-                    return cached_conversation
-            except Exception as redis_error:
-                logger.warning(f"Error al obtener de Redis, continuando con MongoDB: {str(redis_error)}")
-                
-            # Si no está en cache, buscar en MongoDB
-            conversation = self.collection.find_one({"user_id": user_id, "_id": self._uuid_to_binary(conversation_id)})
-            if conversation:
-                conversation = self._serialize_conversation_record(conversation)
-                lifecycle_status = self._normalize_lifecycle_status(conversation)
+            cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
+            if cached_conversation:
+                cached_conversation = self._apply_lifecycle_backfill(cached_conversation)
+                lifecycle_status = self._normalize_lifecycle_status(cached_conversation)
                 if lifecycle_status == LIFECYCLE_DELETED and not include_deleted:
                     return None
-                logger.info(f"Conversación {conversation_id} recuperada de MongoDB para el usuario {user_id}")
-            else:
-                logger.info(f"Conversación {conversation_id} no encontrada para el usuario {user_id}")
-            return conversation
+                logger.info(f"Conversación {conversation_id} recuperada de Redis para el usuario {user_id}")
+                return cached_conversation
+            logger.info(f"Conversación {conversation_id} no encontrada para el usuario {user_id}")
+            return None
         except Exception as e:
             logger.error(f"Error al obtener conversación {conversation_id} para el usuario {user_id}: {str(e)}")
             raise
 
-    def update_conversation(self, user_id, conversation_id, messages=None, symptoms=None, 
+    def update_conversation(self, user_id, conversation_id, messages=None, symptoms=None,
                            symptoms_pattern=None, pain_scale=None, triaje_level=None, medical_context=None):
         try:
-            update_data = {"timestamp": datetime.now()}
-            
+            update_data = {"timestamp": datetime.now().isoformat()}
+
             if messages is not None:
                 update_data["messages"] = messages
             if symptoms is not None:
@@ -236,30 +242,19 @@ class ConversationalDatasetManager:
                 update_data["triaje_level"] = triaje_level
             if medical_context is not None:
                 update_data["medical_context"] = medical_context
-                
-            result = self.collection.update_one(
-                {
-                    "user_id": user_id,
-                    "_id": self._uuid_to_binary(conversation_id),
-                    "$or": [{"lifecycle_status": {"$exists": False}}, {"lifecycle_status": {"$ne": LIFECYCLE_DELETED}}],
-                },
-                {"$set": self._encrypt_sensitive_fields(update_data)}
-            )
-            
-            logger.info(f"Conversación {conversation_id} actualizada en MongoDB para el usuario {user_id}, campos modificados: {result.modified_count}")
-            
-            # Actualizar también en Redis si existe
-            try:
-                cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
-                if cached_conversation:
-                    for key, value in update_data.items():
-                        cached_conversation[key] = value
-                    RedisCacheManager.actualizar_conversacion(user_id, conversation_id, cached_conversation)
-                    logger.info(f"Conversación {conversation_id} actualizada en Redis para el usuario {user_id}")
-            except Exception as redis_error:
-                logger.warning(f"Error al actualizar en Redis: {str(redis_error)}")
-                
-            return result.modified_count
+
+            cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
+            if not cached_conversation:
+                logger.info(f"Conversación {conversation_id} no encontrada en Redis para actualizar")
+                return 0
+            if self._normalize_lifecycle_status(cached_conversation) == LIFECYCLE_DELETED:
+                return 0
+
+            for key, value in update_data.items():
+                cached_conversation[key] = value
+            RedisCacheManager.actualizar_conversacion(user_id, conversation_id, cached_conversation)
+            logger.info(f"Conversación {conversation_id} actualizada en Redis para el usuario {user_id}")
+            return 1
         except Exception as e:
             logger.error(f"Error al actualizar conversación {conversation_id} para el usuario {user_id}: {str(e)}")
             raise
@@ -288,56 +283,27 @@ class ConversationalDatasetManager:
                 )
 
             merged_state = {**existing_etl_state, **etl_state}
-            current_conversation = self.get_conversation(user_id, conversation_id) or {}
-            medical_context = current_conversation.get("medical_context", {})
-            if not isinstance(medical_context, dict):
-                medical_context = {}
-            hybrid_state = medical_context.get("hybrid_state", {})
-            if not isinstance(hybrid_state, dict):
-                hybrid_state = {}
-            hybrid_state["etl"] = merged_state
-            medical_context["hybrid_state"] = hybrid_state
-            update_data = {
-                "medical_context": medical_context,
-                "timestamp": datetime.now(),
-            }
 
-            result = self.collection.update_one(
-                {"user_id": user_id, "_id": self._uuid_to_binary(conversation_id)},
-                {"$set": self._encrypt_sensitive_fields(update_data)},
-            )
+            cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
+            if not cached_conversation:
+                return 0
+            medical_context_cached = cached_conversation.get("medical_context", {})
+            if not isinstance(medical_context_cached, dict):
+                medical_context_cached = {}
+            hybrid_state_cached = medical_context_cached.get("hybrid_state", {})
+            if not isinstance(hybrid_state_cached, dict):
+                hybrid_state_cached = {}
+            hybrid_state_cached["etl"] = merged_state
+            medical_context_cached["hybrid_state"] = hybrid_state_cached
+            cached_conversation["medical_context"] = medical_context_cached
+            cached_conversation["timestamp"] = datetime.now().isoformat()
+            RedisCacheManager.actualizar_conversacion(user_id, conversation_id, cached_conversation)
             logger.info(
-                "Estado ETL actualizado en MongoDB para conversación %s usuario %s (modificados=%s)",
+                "Estado ETL actualizado en Redis para conversación %s usuario %s",
                 conversation_id,
                 user_id,
-                result.modified_count,
             )
-
-            try:
-                cached_conversation = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
-                if cached_conversation:
-                    medical_context_cached = cached_conversation.get("medical_context", {})
-                    if not isinstance(medical_context_cached, dict):
-                        medical_context_cached = {}
-
-                    hybrid_state_cached = medical_context_cached.get("hybrid_state", {})
-                    if not isinstance(hybrid_state_cached, dict):
-                        hybrid_state_cached = {}
-
-                    hybrid_state_cached["etl"] = merged_state
-                    medical_context_cached["hybrid_state"] = hybrid_state_cached
-                    cached_conversation["medical_context"] = medical_context_cached
-                    cached_conversation["timestamp"] = datetime.now().isoformat()
-                    RedisCacheManager.actualizar_conversacion(user_id, conversation_id, cached_conversation)
-                    logger.info(
-                        "Estado ETL actualizado en Redis para conversación %s usuario %s",
-                        conversation_id,
-                        user_id,
-                    )
-            except Exception as redis_error:
-                logger.warning(f"Error al actualizar estado ETL en Redis: {str(redis_error)}")
-
-            return result.modified_count
+            return 1
         except Exception as e:
             logger.error(
                 "Error al actualizar estado ETL para conversación %s usuario %s: %s",
@@ -347,57 +313,57 @@ class ConversationalDatasetManager:
             )
             raise
 
+    def _set_lifecycle(self, user_id, conversation_id, *, expected_statuses, changes):
+        """Actualiza in-place el lifecycle de una conversación en Redis.
+
+        Mantiene el registro en Redis (no lo elimina) para que las vistas
+        archived/all y la recuperacion sigan funcionando, igual que hacia
+        Mongo con lifecycle_status.
+        """
+        cached = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
+        if not cached:
+            return 0
+        current_status = self._normalize_lifecycle_status(cached)
+        if expected_statuses is not None and current_status not in expected_statuses:
+            return 0
+        cached.update(changes)
+        cached["timestamp"] = datetime.now().isoformat()
+        RedisCacheManager.actualizar_conversacion(user_id, conversation_id, cached)
+        return 1
+
     def archive_conversation(self, user_id, conversation_id):
         try:
-            now = datetime.now()
-            result = self.collection.update_one(
-                {
-                    "user_id": user_id,
-                    "_id": self._uuid_to_binary(conversation_id),
-                    "$or": [
-                        {"lifecycle_status": LIFECYCLE_ACTIVE},
-                        {"lifecycle_status": {"$exists": False}, "active": {"$ne": False}},
-                    ],
-                },
-                {
-                    "$set": {
-                        "lifecycle_status": LIFECYCLE_ARCHIVED,
-                        "archived_at": now,
-                        "deleted_at": None,
-                        "purge_after": None,
-                        "active": False,
-                        "timestamp": now,
-                    }
+            now = datetime.now().isoformat()
+            return self._set_lifecycle(
+                user_id,
+                conversation_id,
+                expected_statuses={LIFECYCLE_ACTIVE},
+                changes={
+                    "lifecycle_status": LIFECYCLE_ARCHIVED,
+                    "archived_at": now,
+                    "deleted_at": None,
+                    "purge_after": None,
+                    "active": False,
                 },
             )
-            if result.modified_count:
-                RedisCacheManager.eliminar_conversacion(user_id, conversation_id)
-            return result.modified_count
         except Exception as e:
             logger.error(f"Error al archivar conversación {conversation_id} para el usuario {user_id}: {str(e)}")
             raise
 
     def recover_conversation(self, user_id, conversation_id):
         try:
-            now = datetime.now()
-            result = self.collection.update_one(
-                {
-                    "user_id": user_id,
-                    "_id": self._uuid_to_binary(conversation_id),
-                    "lifecycle_status": LIFECYCLE_ARCHIVED,
-                },
-                {
-                    "$set": {
-                        "lifecycle_status": LIFECYCLE_ACTIVE,
-                        "archived_at": None,
-                        "deleted_at": None,
-                        "purge_after": None,
-                        "active": True,
-                        "timestamp": now,
-                    }
+            return self._set_lifecycle(
+                user_id,
+                conversation_id,
+                expected_statuses={LIFECYCLE_ARCHIVED},
+                changes={
+                    "lifecycle_status": LIFECYCLE_ACTIVE,
+                    "archived_at": None,
+                    "deleted_at": None,
+                    "purge_after": None,
+                    "active": True,
                 },
             )
-            return result.modified_count
         except Exception as e:
             logger.error(f"Error al recuperar conversación {conversation_id} para el usuario {user_id}: {str(e)}")
             raise
@@ -406,50 +372,31 @@ class ConversationalDatasetManager:
         try:
             now = datetime.now()
             purge_after = now + timedelta(days=SOFT_DELETE_RETENTION_DAYS)
-            result = self.collection.update_one(
-                {
-                    "user_id": user_id,
-                    "_id": self._uuid_to_binary(conversation_id),
-                    "$or": [{"lifecycle_status": {"$exists": False}}, {"lifecycle_status": {"$ne": LIFECYCLE_DELETED}}],
-                },
-                {
-                    "$set": {
-                        "lifecycle_status": LIFECYCLE_DELETED,
-                        "deleted_at": now,
-                        "purge_after": purge_after,
-                        "active": False,
-                        "timestamp": now,
-                    }
+            return self._set_lifecycle(
+                user_id,
+                conversation_id,
+                expected_statuses={LIFECYCLE_ACTIVE, LIFECYCLE_ARCHIVED},
+                changes={
+                    "lifecycle_status": LIFECYCLE_DELETED,
+                    "deleted_at": now.isoformat(),
+                    "purge_after": purge_after.isoformat(),
+                    "active": False,
                 },
             )
-            if result.modified_count:
-                RedisCacheManager.eliminar_conversacion(user_id, conversation_id)
-            return result.modified_count
         except Exception as e:
             logger.error(f"Error al hacer soft-delete de conversación {conversation_id} para el usuario {user_id}: {str(e)}")
             raise
 
     def soft_delete_all_conversations(self, user_id):
         try:
-            now = datetime.now()
-            purge_after = now + timedelta(days=SOFT_DELETE_RETENTION_DAYS)
-            result = self.collection.update_many(
-                {
-                    "user_id": user_id,
-                    "$or": [{"lifecycle_status": {"$exists": False}}, {"lifecycle_status": {"$ne": LIFECYCLE_DELETED}}],
-                },
-                {
-                    "$set": {
-                        "lifecycle_status": LIFECYCLE_DELETED,
-                        "deleted_at": now,
-                        "purge_after": purge_after,
-                        "active": False,
-                        "timestamp": now,
-                    }
-                },
-            )
-            RedisCacheManager.eliminar_todas_conversaciones(user_id)
-            return result.modified_count
+            raw_conversations = RedisCacheManager.obtener_todas_conversaciones(user_id)
+            count = 0
+            for conv in raw_conversations:
+                conv_id = conv.get("_id")
+                if not conv_id:
+                    continue
+                count += self.soft_delete_conversation(user_id, conv_id)
+            return count
         except Exception as e:
             logger.error(f"Error al hacer soft-delete masivo para el usuario {user_id}: {str(e)}")
             raise
@@ -462,49 +409,6 @@ class ConversationalDatasetManager:
 
     def delete_all_conversations(self, user_id):
         return self.soft_delete_all_conversations(user_id)
-    
-    def sync_from_redis_to_mongo(self, user_id, conversation_id=None):
-        """Sincroniza datos de Redis a MongoDB"""
-        try:
-            if conversation_id:
-                # Sincronizar una conversación específica
-                try:
-                    cached_data = RedisCacheManager.obtener_conversacion(user_id, conversation_id)
-                    if cached_data:
-                        cached_data = self._apply_lifecycle_backfill(cached_data)
-                        # Convertir string _id a Binary UUID para MongoDB
-                        if isinstance(cached_data["_id"], str):
-                            cached_data["_id"] = self._uuid_to_binary(cached_data["_id"])
-                            
-                        result = self.collection.replace_one(
-                            {"user_id": user_id, "_id": cached_data["_id"]},
-                            self._encrypt_sensitive_fields(cached_data),
-                            upsert=True
-                        )
-                        logger.info(f"Conversación {conversation_id} sincronizada de Redis a MongoDB para el usuario {user_id}")
-                except Exception as redis_error:
-                    logger.warning(f"Error al sincronizar de Redis a MongoDB: {str(redis_error)}")
-            else:
-                # Sincronizar todas las conversaciones del usuario
-                try:
-                    all_cached = RedisCacheManager.obtener_todas_conversaciones(user_id)
-                    for cached_data in all_cached:
-                        cached_data = self._apply_lifecycle_backfill(cached_data)
-                        # Convertir string _id a Binary UUID para MongoDB
-                        if isinstance(cached_data["_id"], str):
-                            cached_data["_id"] = self._uuid_to_binary(cached_data["_id"])
-                            
-                        self.collection.replace_one(
-                            {"user_id": cached_data["user_id"], "_id": cached_data["_id"]},
-                            self._encrypt_sensitive_fields(cached_data),
-                            upsert=True
-                        )
-                    logger.info(f"{len(all_cached)} conversaciones sincronizadas de Redis a MongoDB para el usuario {user_id}")
-                except Exception as redis_error:
-                    logger.warning(f"Error al sincronizar todas las conversaciones de Redis a MongoDB: {str(redis_error)}")
-        except Exception as e:
-            logger.error(f"Error al sincronizar datos de Redis a MongoDB para el usuario {user_id}: {str(e)}")
-            raise
 
 class RedisCacheManager:
     # Constantes
@@ -520,9 +424,37 @@ class RedisCacheManager:
         except Exception as e:
             logger.error(f"Error al generar clave Redis: {str(e)}")
             raise
-    
+
     @staticmethod
-    def guardar_conversacion(user_id, conversation_id, medical_context, messages, symptoms, 
+    def _encrypt_payload(data):
+        """Cifra los campos sensibles (messages, medical_context) antes de
+        persistir en Redis. El resto de campos se mantienen en claro para
+        permitir filtrado por lifecycle_status sin descifrar."""
+        if not isinstance(data, dict):
+            return data
+        encrypted = dict(data)
+        if "messages" in encrypted:
+            encrypted["messages"] = _encrypt_conv_field(encrypted.get("messages"))
+        if "medical_context" in encrypted:
+            encrypted["medical_context"] = _encrypt_conv_field(encrypted.get("medical_context"))
+        encrypted["schema_version"] = ENCRYPTED_CONVERSATION_SCHEMA_VERSION
+        return encrypted
+
+    @staticmethod
+    def _decrypt_payload(data):
+        """Descifra los campos sensibles al leer de Redis. Tolera registros
+        antiguos en texto plano (fallback en _decrypt_conv_field)."""
+        if not isinstance(data, dict):
+            return data
+        decrypted = dict(data)
+        if "messages" in decrypted:
+            decrypted["messages"] = _decrypt_conv_field(decrypted.get("messages"))
+        if "medical_context" in decrypted:
+            decrypted["medical_context"] = _decrypt_conv_field(decrypted.get("medical_context"))
+        return decrypted
+
+    @staticmethod
+    def guardar_conversacion(user_id, conversation_id, medical_context, messages, symptoms,
                            symptoms_pattern, pain_scale, triaje_level,
                            lifecycle_status=LIFECYCLE_ACTIVE, archived_at=None, deleted_at=None, purge_after=None):
         """Guarda una conversación en Redis con expiración de 24 horas"""
@@ -544,10 +476,10 @@ class RedisCacheManager:
                 "deleted_at": deleted_at.isoformat() if isinstance(deleted_at, datetime) else deleted_at,
                 "purge_after": purge_after.isoformat() if isinstance(purge_after, datetime) else purge_after,
             }
-            
-            # Guardar la conversación con expiración
+
+            # Guardar la conversación con expiración (campos sensibles cifrados)
             key = RedisCacheManager._get_key(user_id, conversation_id)
-            redis_client.set(key, json.dumps(data), ex=RedisCacheManager.EXPIRATION_TIME)
+            redis_client.set(key, json.dumps(RedisCacheManager._encrypt_payload(data)), ex=RedisCacheManager.EXPIRATION_TIME)
             logger.debug(f"Datos guardados en Redis con clave: {key}")
             
             # Añadir a la lista de conversaciones del usuario
@@ -572,7 +504,7 @@ class RedisCacheManager:
             if data:
                 redis_client.expire(key, RedisCacheManager.EXPIRATION_TIME)
                 logger.debug(f"Tiempo de expiración renovado para clave: {key}")
-                return json.loads(data)
+                return RedisCacheManager._decrypt_payload(json.loads(data))
             logger.debug(f"No se encontró datos en Redis para clave: {key}")
             return None
         except json.JSONDecodeError as je:
@@ -591,7 +523,7 @@ class RedisCacheManager:
                 data['timestamp'] = data['timestamp'].isoformat()
             
             key = RedisCacheManager._get_key(user_id, conversation_id)
-            redis_client.set(key, json.dumps(data), ex=RedisCacheManager.EXPIRATION_TIME)
+            redis_client.set(key, json.dumps(RedisCacheManager._encrypt_payload(data)), ex=RedisCacheManager.EXPIRATION_TIME)
             logger.debug(f"Conversación actualizada en Redis con clave: {key}")
             return True
         except Exception as e:

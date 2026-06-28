@@ -5,7 +5,7 @@ from config.config import Config
 
 class Encryption:
     def __init__(self, key=None):
-        configured_key = key or Config.MONGO_ENCRYPTION_KEY
+        configured_key = key or Config.CHAT_ENCRYPTION_KEY
         if isinstance(configured_key, str):
             configured_key = configured_key.encode("utf-8")
         self.cipher = Fernet(configured_key)

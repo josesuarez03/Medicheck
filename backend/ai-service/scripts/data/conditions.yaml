@@ -1,0 +1,294 @@
+# Catalogo de condiciones (fisicas y psicologicas) para alimentar a ai-service
+# como contexto recuperable por similitud semantica (RAG) al generar respuestas
+# de presunto diagnostico y recomendacion (medico / psicologo / autocuidado).
+#
+# NO reemplaza el juicio del modelo ni fuerza respuestas de plantilla: es
+# contexto de apoyo. Estructura inspirada conceptualmente en protocolos de
+# triaje de emergencias y Primeros Auxilios Psicologicos (OMS/OPS), expresada
+# en redaccion propia.
+#
+# Campos:
+#   condition_id, name, category(physical|psychological),
+#   synonyms (como la gente lo describe coloquialmente, incl. venezolano),
+#   signals (senales tipicas), urgency_level(low|moderate|high|emergency),
+#   next_step(self_care|doctor|psychologist|emergency),
+#   country_context(ALL|VE), source (referencia conceptual opcional)
+
+conditions:
+  # ---------------- FISICAS: trauma y catastrofe ----------------
+  - condition_id: herida_sangrante
+    name: Herida con sangrado
+    category: physical
+    synonyms: ["me corte", "estoy sangrando", "tengo una herida", "me abri", "no para de sangrar"]
+    signals: ["sangrado visible", "dolor en la herida", "herida abierta"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+    source: "Primeros auxilios basicos (estructura general)"
+
+  - condition_id: hemorragia_grave
+    name: Hemorragia abundante / no controlada
+    category: physical
+    synonyms: ["no para de sangrar", "mucha sangre", "se desangra", "sangrado fuerte"]
+    signals: ["sangrado que no cede con presion", "palidez", "mareo", "debilidad"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+
+  - condition_id: fractura
+    name: Fractura o sospecha de hueso roto
+    category: physical
+    synonyms: ["me rompi", "creo que me fracture", "hueso roto", "no puedo mover"]
+    signals: ["dolor intenso", "deformidad", "hinchazon", "imposibilidad de mover"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: fractura_expuesta
+    name: Fractura expuesta
+    category: physical
+    synonyms: ["hueso expuesto", "se ve el hueso", "hueso por fuera"]
+    signals: ["hueso visible", "sangrado", "dolor severo"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+
+  - condition_id: aplastamiento
+    name: Lesion por aplastamiento / atrapamiento
+    category: physical
+    synonyms: ["me cayo algo encima", "aplastado", "atrapado bajo los escombros", "estoy atrapado"]
+    signals: ["miembro atrapado", "perdida de sensibilidad", "dolor intenso", "imposibilidad de moverse"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+    source: "Triaje de desastres (sindrome de aplastamiento)"
+
+  - condition_id: traumatismo_craneal
+    name: Golpe en la cabeza / traumatismo craneal
+    category: physical
+    synonyms: ["me golpee la cabeza", "golpe en la cabeza", "me di en la cabeza"]
+    signals: ["confusion", "vomitos", "somnolencia", "perdida de consciencia"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: quemadura
+    name: Quemadura
+    category: physical
+    synonyms: ["me queme", "quemadura", "me ampolle"]
+    signals: ["ampollas", "piel enrojecida", "dolor", "piel desprendida"]
+    urgency_level: moderate
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: deshidratacion
+    name: Deshidratacion
+    category: physical
+    synonyms: ["mucha sed", "estoy deshidratado", "no he tomado agua", "casi no orino"]
+    signals: ["boca seca", "orina escasa y oscura", "debilidad", "mareo"]
+    urgency_level: moderate
+    next_step: self_care
+    country_context: ALL
+    source: "Manejo de deshidratacion con suero oral (estructura general)"
+
+  - condition_id: intoxicacion_alimentaria
+    name: Intoxicacion por agua/alimentos en mal estado
+    category: physical
+    synonyms: ["me cayo mal la comida", "agua contaminada", "me intoxique", "diarrea y vomito"]
+    signals: ["vomitos", "diarrea", "dolor abdominal", "fiebre"]
+    urgency_level: moderate
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: crisis_asmatica
+    name: Crisis asmatica / dificultad respiratoria por polvo
+    category: physical
+    synonyms: ["ataque de asma", "me falta el aire", "silbido en el pecho", "trague polvo"]
+    signals: ["dificultad para respirar", "sibilancias", "tos persistente", "opresion toracica"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: hipotermia_exposicion
+    name: Hipotermia / exposicion a la intemperie
+    category: physical
+    synonyms: ["mucho frio", "no entro en calor", "estoy a la intemperie", "tiritando"]
+    signals: ["temblor intenso", "piel fria", "confusion", "somnolencia"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: infeccion_herida
+    name: Infeccion de herida
+    category: physical
+    synonyms: ["se me infecto", "la herida tiene pus", "esta hinchado y rojo"]
+    signals: ["enrojecimiento", "pus", "calor local", "fiebre"]
+    urgency_level: moderate
+    next_step: doctor
+    country_context: ALL
+
+  # ---------------- FISICAS: cronicas que se descompensan ----------------
+  - condition_id: hipertension_descompensada
+    name: Hipertension descompensada
+    category: physical
+    synonyms: ["se me subio la tension", "presion alta", "se me disparo la presion"]
+    signals: ["dolor de cabeza", "vision borrosa", "zumbido de oidos", "mareo"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: diabetes_descompensada
+    name: Diabetes descompensada
+    category: physical
+    synonyms: ["azucar alta", "se me subio el azucar", "no tengo insulina"]
+    signals: ["sed excesiva", "orina frecuente", "vision borrosa", "fatiga"]
+    urgency_level: high
+    next_step: doctor
+    country_context: ALL
+
+  - condition_id: crisis_epileptica
+    name: Crisis epileptica / convulsiones
+    category: physical
+    synonyms: ["convulsiones", "ataque epileptico", "se me sacude el cuerpo", "no tengo mis pastillas"]
+    signals: ["movimientos involuntarios", "perdida de consciencia", "confusion posterior"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+
+  - condition_id: dolor_toracico
+    name: Dolor de pecho
+    category: physical
+    synonyms: ["dolor de pecho", "me aprieta el pecho", "opresion en el pecho"]
+    signals: ["dolor opresivo", "irradiacion a brazo o mandibula", "sudoracion", "falta de aire"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+
+  - condition_id: cefalea
+    name: Dolor de cabeza
+    category: physical
+    synonyms: ["me duele la cabeza", "dolor de cabeza", "jaqueca", "migrana"]
+    signals: ["dolor pulsatil", "sensibilidad a la luz", "nauseas"]
+    urgency_level: low
+    next_step: self_care
+    country_context: ALL
+
+  # ---------------- PSICOLOGICAS ----------------
+  - condition_id: estres_agudo
+    name: Reaccion de estres agudo
+    category: psychological
+    synonyms: ["estoy en shock", "no asimilo lo que paso", "me siento aturdido", "no reacciono"]
+    signals: ["aturdimiento", "desconexion", "ansiedad intensa", "dificultad para concentrarse"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+    source: "Primeros Auxilios Psicologicos (estructura general)"
+
+  - condition_id: estres_postraumatico
+    name: Estres postraumatico (TEPT)
+    category: psychological
+    synonyms: ["revivo el terremoto", "tengo flashbacks", "no me lo saco de la cabeza", "me sobresalto con todo"]
+    signals: ["reexperimentacion", "evitacion", "hipervigilancia", "pesadillas"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: duelo_agudo
+    name: Duelo agudo
+    category: psychological
+    synonyms: ["perdi a alguien", "estoy de luto", "se me murio", "no supero la perdida"]
+    signals: ["tristeza profunda", "llanto", "negacion", "dolor por la perdida"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: crisis_panico
+    name: Crisis de panico
+    category: psychological
+    synonyms: ["ataque de panico", "siento que me muero", "el corazon se me sale", "no puedo respirar de los nervios"]
+    signals: ["palpitaciones", "falta de aire", "temblor", "miedo intenso repentino"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: ansiedad_generalizada
+    name: Ansiedad
+    category: psychological
+    synonyms: ["estoy muy ansioso", "nervios", "angustia", "preocupacion constante"]
+    signals: ["preocupacion excesiva", "tension muscular", "irritabilidad", "inquietud"]
+    urgency_level: low
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: depresion_reactiva
+    name: Depresion reactiva
+    category: psychological
+    synonyms: ["estoy muy triste", "no tengo ganas de nada", "me siento vacio", "no le veo sentido"]
+    signals: ["tristeza persistente", "perdida de interes", "fatiga", "desesperanza"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: insomnio_postrauma
+    name: Insomnio post-trauma
+    category: psychological
+    synonyms: ["no puedo dormir", "no pego ojo", "tengo pesadillas", "miedo a dormir"]
+    signals: ["dificultad para conciliar el sueno", "despertares", "pesadillas", "cansancio diurno"]
+    urgency_level: low
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: ideacion_suicida
+    name: Ideacion suicida / riesgo de autolesion
+    category: psychological
+    synonyms: ["no quiero vivir", "me quiero morir", "mejor muerto", "hacerme dano", "acabar con todo"]
+    signals: ["pensamientos de muerte", "desesperanza", "plan de autolesion", "aislamiento"]
+    urgency_level: emergency
+    next_step: emergency
+    country_context: ALL
+    source: "Prevencion del suicidio (estructura general)"
+
+  - condition_id: ansiedad_separacion_familiar
+    name: Ansiedad por familiares desaparecidos / sin contacto
+    category: psychological
+    synonyms: ["no se nada de mi familia", "no logro contactar", "esta desaparecido", "no se si esta vivo"]
+    signals: ["angustia intensa", "incertidumbre", "insomnio", "dificultad para funcionar"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: duelo_migratorio
+    name: Duelo y angustia a distancia (diaspora)
+    category: psychological
+    synonyms: ["estoy lejos y no puedo hacer nada", "me siento impotente", "culpa por no estar", "estoy en otro pais"]
+    signals: ["impotencia", "culpa", "angustia a distancia", "consumo compulsivo de noticias"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: agotamiento_cuidador
+    name: Agotamiento del cuidador / fatiga por compasion
+    category: psychological
+    synonyms: ["estoy agotado de cuidar a todos", "no doy mas", "me hago cargo de todo", "no descanso"]
+    signals: ["agotamiento fisico y emocional", "irritabilidad", "insomnio", "abandono del autocuidado"]
+    urgency_level: low
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: ataque_ansiedad_ninos
+    name: Reaccion de estres en ninos/adolescentes
+    category: psychological
+    synonyms: ["mi hijo no para de llorar", "el nino esta muy asustado", "mi hija no duerme", "el nino se orina"]
+    signals: ["llanto persistente", "regresion", "miedo a separarse", "alteraciones del sueno"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL
+
+  - condition_id: desesperanza_colectiva
+    name: Desesperanza por la situacion / desamparo
+    category: psychological
+    synonyms: ["no hay ayuda", "estamos abandonados", "no veo salida", "todo esta perdido"]
+    signals: ["desesperanza", "rabia", "impotencia", "desmotivacion"]
+    urgency_level: moderate
+    next_step: psychologist
+    country_context: ALL

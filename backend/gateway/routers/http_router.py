@@ -4,13 +4,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from middleware.auth import get_bearer_token
+from middleware.auth import create_access_token, get_bearer_token
 from middleware.rate_limit import enforce_rate_limit
 from services.etl_dispatcher import clear_inactivity_token, enqueue_etl_dispatch
 from services.orchestrator import orchestrate_chat, forward_to_ai_request
 
 
 router = APIRouter(tags=["http"])
+
+
+class SessionRequest(BaseModel):
+    user_id: str | None = None
 
 
 class EtlRetryRequest(BaseModel):
@@ -32,6 +36,16 @@ async def health() -> dict[str, str]:
         "service": "gateway",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.post("/auth/session")
+async def create_session(payload: SessionRequest, request: Request) -> dict:
+    """Emite un JWT de corta duracion para un user_id (modelo de identidad
+    simple sin contrasena). El cliente puede mandar su propio UUID como
+    user_id, o el gateway lo genera en el primer contacto. Reemplaza la
+    emision de JWT que antes hacia Django."""
+    await enforce_rate_limit(request, scope="http")
+    return create_access_token(payload.user_id)
 
 
 @router.post("/chat")

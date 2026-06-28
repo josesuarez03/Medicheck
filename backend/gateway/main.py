@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from middleware.auth import validate_jwt_config
 from routers.http_router import router as http_router
 from routers.ws_router import router as ws_router
 
@@ -12,10 +13,15 @@ def _allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+# Falla rapido si JWT_SECRET/SECRET_KEY no esta configurado: el gateway es el
+# unico emisor y verificador de JWT en esta rama, no puede degradar a inseguro.
+validate_jwt_config()
+
+
 app = FastAPI(
     title="Hipo Gateway",
     version="0.1.0",
-    description="Bootstrap FastAPI del gateway para la futura modularizacion.",
+    description="API de inteligencia (triaje + conversacion) para respuesta a desastres.",
 )
 
 app.add_middleware(

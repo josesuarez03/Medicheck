@@ -1,0 +1,46 @@
+case_id: crisis_panico_case
+name: Crisis o ataque de pánico
+intent_keywords:
+  - ataque de pánico
+  - crisis de pánico
+  - ataque de ansiedad
+  - siento que me muero
+  - el corazón se me sale
+  - me palpita fuerte el corazón
+  - no puedo respirar de los nervios
+  - me tiembla todo
+  - me mareo de la angustia
+  - siento que me va a dar algo
+  - me falta el aire de la angustia
+  - sudo frío
+  - terror de repente
+required_fields:
+  - symptoms
+  - trigger
+  - duration
+  - history
+tree:
+  - id: panico_q1
+    field: symptoms
+    question: "¿Qué sientes ahora? (palpitaciones, falta de aire, temblor, mareo, opresión en el pecho)"
+    triage_hint: moderate
+    rule_id: panico_rule_symptoms
+  - id: panico_q2
+    field: trigger
+    question: "¿Notas algo que lo haya desencadenado (un recuerdo, un ruido, una réplica, una noticia)?"
+    triage_hint: moderate
+    rule_id: panico_rule_trigger
+  - id: panico_q3
+    field: duration
+    question: "¿Hace cuánto empezó esta sensación?"
+    triage_hint: moderate
+    rule_id: panico_rule_duration
+  - id: panico_q4
+    field: history
+    question: "¿Te había pasado antes algo parecido?"
+    triage_hint: moderate
+    rule_id: panico_rule_history
+advice:
+  Leve: "Lo que sientes asusta mucho, pero una crisis de pánico no es peligrosa y va a pasar. Intenta respirar lento: inhala 4 segundos, sostén 4, exhala 6. Apoya los pies en el suelo y nombra 5 cosas que veas. Estás a salvo; esto baja en minutos."
+  Moderado: "Las crisis de pánico repetidas se tratan bien con apoyo profesional. Practica respiración lenta y técnicas de anclaje cuando aparezcan, y busca a un psicólogo para aprender a manejarlas. Reduce cafeína y exposición excesiva a noticias del desastre."
+  Severo: "Si las crisis son muy frecuentes o intensas, busca apoyo de un psicólogo o profesional de salud mental pronto. Si tienes dolor de pecho real, te falta el aire de forma sostenida o no estás seguro/a de que sea pánico, descarta una causa física: en Venezuela llama al 171; fuera de Venezuela, al número de emergencias local."

@@ -13,11 +13,27 @@
     "dificultad para respirar",
     "pérdida de consciencia",
     "convulsiones",
-    "intento suicida"
+    "intento suicida",
+    "no para de sangrar",
+    "sangrado abundante",
+    "hueso expuesto",
+    "aplastamiento",
+    "atrapado bajo los escombros",
+    "no puedo respirar",
+    "labios morados",
+    "no orino"
   ],
   "moderate_markers": [
     "vómitos persistentes",
     "mareo intenso",
-    "fiebre alta"
+    "fiebre alta",
+    "deshidratado",
+    "diarrea",
+    "no puedo dormir",
+    "pesadillas",
+    "ataque de panico",
+    "ataque de pánico",
+    "perdi a un familiar",
+    "perdí a un familiar"
   ]
 }

@@ -198,6 +198,23 @@ class ConversationContextService:
             min_signal_score=0.25,
         )
 
+    def get_relevant_conditions(self, query_text: str, country: str | None = None, k: int | None = None) -> list[dict[str, Any]]:
+        """Recupera condiciones del catalogo (pgvector) relevantes al turno.
+
+        country None -> usa Config.DEFAULT_USER_COUNTRY como respaldo. Para
+        usuarios fuera de Venezuela, el filtro country_context evita condiciones
+        marcadas como especificas de VE.
+        """
+        query_embedding = generate_embedding(query_text)
+        if not query_embedding:
+            return []
+        resolved_country = country or getattr(Config, "DEFAULT_USER_COUNTRY", None)
+        return self.vector_store.get_relevant_conditions(
+            query_embedding=query_embedding,
+            top_k=k or 3,
+            country=resolved_country,
+        )
+
     def get_global_patient_context_mongo(self, user_id: str, current_conversation_id: str | None = None, max_conversations: int = 5) -> dict[str, Any]:
         if self.conversation_collection is None:
             return {"recent_conversations": []}
@@ -293,6 +310,7 @@ class ConversationContextService:
         retrieval_level: str = "medium",
         episodic_top_k: int | None = None,
         global_top_k: int | None = None,
+        user_country: str | None = None,
     ) -> dict[str, Any]:
         query_text = self._compact_summary_text(current_facts_summary)
         patient_summary = self.vector_store.get_user_summary_context(user_id=user_id) or {}
@@ -306,6 +324,7 @@ class ConversationContextService:
             "semantic_context": [] if retrieval_level == "cheap" else self.get_semantic_context(user_id, conversation_id, query_text, effective_episodic_top_k),
             "global_semantic_context": [] if retrieval_level != "full" else self.get_global_semantic_context(user_id, query_text, current_conversation_id=conversation_id, k=effective_global_top_k),
             "global_mongo_context": self.get_global_patient_context_mongo(user_id, current_conversation_id=conversation_id),
+            "conditions_context": self.get_relevant_conditions(query_text, country=user_country) if query_text else [],
         }
 
     def build_prompt_context(
@@ -323,6 +342,7 @@ class ConversationContextService:
         retrieval_level: str = "medium",
         episodic_top_k: int | None = None,
         global_top_k: int | None = None,
+        user_country: str | None = None,
     ) -> dict[str, Any]:
         retrieval = self.build_retrieval_context(
             user_id,
@@ -331,6 +351,7 @@ class ConversationContextService:
             retrieval_level=retrieval_level,
             episodic_top_k=episodic_top_k,
             global_top_k=global_top_k,
+            user_country=user_country,
         )
         recent_turns = self.get_recent_window(user_id, conversation_id, 2)
         return {
@@ -342,6 +363,7 @@ class ConversationContextService:
             "semantic_context": retrieval.get("semantic_context", []),
             "global_semantic_context": retrieval.get("global_semantic_context", []),
             "global_mongo_context": retrieval.get("global_mongo_context", {}),
+            "conditions_context": retrieval.get("conditions_context", []),
             "postgres_context": postgres_context or {},
             "missing_questions": (missing_questions or [])[:2],
             "questions_selected": (questions_selected or [])[:2],

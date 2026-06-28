@@ -1,7 +1,7 @@
 {
   "messages": {
-    "base": "Tus síntomas podrían indicar una situación urgente. Busca atención médica inmediata o llama al 911 ahora.",
-    "psychological": "Si existe riesgo de autolesión, no te quedes solo/a. Llama al 911 ahora. También puedes contactar 988 (Lifeline) para apoyo en crisis."
+    "base": "Esto podría ser una situación urgente. Busca atención médica de inmediato: si estás en Venezuela llama al 171; si estás en otro país, llama al número de emergencias local.",
+    "psychological": "Tu seguridad es lo primero y no estás solo/a en esto. Busca ahora a alguien de confianza y no te quedes solo/a. Si estás en Venezuela, llama al 171 o a Protección Civil (0800-558.84.27 / 0800-266.84.46). Si estás fuera de Venezuela, llama al número de emergencias de tu país o a una línea de prevención del suicidio local. Si hay riesgo inminente de hacerte daño, acude a urgencias de inmediato. Hablar con un psicólogo o profesional de salud mental puede ayudarte a atravesar esto."
   },
   "global_red_flags": [
     {
@@ -23,6 +23,38 @@
     {
       "rule_id": "global_severe_confusion",
       "keyword": "confusión severa"
+    },
+    {
+      "rule_id": "global_severe_bleeding",
+      "keyword": "sangrado abundante"
+    },
+    {
+      "rule_id": "global_trapped_debris",
+      "keyword": "atrapado bajo los escombros"
+    },
+    {
+      "rule_id": "global_crush_injury",
+      "keyword": "aplastamiento"
+    },
+    {
+      "rule_id": "global_uncontrolled_bleeding",
+      "keyword": "no para de sangrar"
+    },
+    {
+      "rule_id": "global_open_fracture",
+      "keyword": "hueso expuesto"
+    },
+    {
+      "rule_id": "global_trapped",
+      "keyword": "estoy atrapado"
+    },
+    {
+      "rule_id": "global_cannot_breathe",
+      "keyword": "no puedo respirar"
+    },
+    {
+      "rule_id": "global_blue_lips",
+      "keyword": "labios morados"
     }
   ],
   "psychological_crisis_flags": [
@@ -39,12 +71,55 @@
       "keyword": "me quiero hacer daño"
     },
     {
+      "rule_id": "psych_self_harm_intent_plain",
+      "keyword": "me quiero hacer dano"
+    },
+    {
       "rule_id": "psych_imminent_risk",
       "keyword": "no quiero vivir"
+    },
+    {
+      "rule_id": "psych_wish_to_die",
+      "keyword": "me quiero morir"
+    },
+    {
+      "rule_id": "psych_kill_myself",
+      "keyword": "me quiero matar"
+    },
+    {
+      "rule_id": "psych_kill_myself_future",
+      "keyword": "me voy a matar"
+    },
+    {
+      "rule_id": "psych_better_dead",
+      "keyword": "mejor muerto"
+    },
+    {
+      "rule_id": "psych_end_it_all",
+      "keyword": "acabar con todo"
+    },
+    {
+      "rule_id": "psych_no_point_living",
+      "keyword": "no vale la pena vivir"
+    },
+    {
+      "rule_id": "psych_dont_want_to_exist",
+      "keyword": "ya no quiero existir"
+    },
+    {
+      "rule_id": "psych_take_my_life",
+      "keyword": "quitarme la vida"
     }
   ],
   "psychological_case_ids": [
-    "anxiety_case"
+    "anxiety_case",
+    "ideacion_suicida_case",
+    "estres_agudo_ptsd_case",
+    "duelo_agudo_case",
+    "crisis_panico_case",
+    "insomnio_pesadillas_case",
+    "ansiedad_separacion_case",
+    "duelo_migratorio_case"
   ],
   "case_red_flags": {
     "headache_case": [
@@ -99,6 +174,52 @@
       {
         "rule_id": "alcohol_severe_tremor",
         "keyword": "temblor severo"
+      }
+    ],
+    "trauma_fisico_case": [
+      {
+        "rule_id": "trauma_uncontrolled_bleeding",
+        "keyword": "no para de sangrar"
+      },
+      {
+        "rule_id": "trauma_open_fracture",
+        "keyword": "hueso expuesto"
+      },
+      {
+        "rule_id": "trauma_trapped",
+        "keyword": "estoy atrapado"
+      },
+      {
+        "rule_id": "trauma_no_feeling_limb",
+        "keyword": "no siento la pierna"
+      }
+    ],
+    "deshidratacion_case": [
+      {
+        "rule_id": "dehydration_no_urine",
+        "keyword": "no orino"
+      },
+      {
+        "rule_id": "dehydration_fainting",
+        "keyword": "me desmayo"
+      },
+      {
+        "rule_id": "dehydration_cannot_retain",
+        "keyword": "no puedo retener liquidos"
+      }
+    ],
+    "respiratorio_polvo_case": [
+      {
+        "rule_id": "resp_cannot_breathe",
+        "keyword": "no puedo respirar"
+      },
+      {
+        "rule_id": "resp_blue_lips",
+        "keyword": "labios morados"
+      },
+      {
+        "rule_id": "resp_asthma_crisis",
+        "keyword": "crisis de asma"
       }
     ]
   }

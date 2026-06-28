@@ -1,0 +1,54 @@
+case_id: respiratorio_polvo_case
+name: Problema respiratorio por polvo de escombros / crisis asmática
+intent_keywords:
+  - me falta el aire
+  - me cuesta respirar
+  - dificultad para respirar
+  - ahogo
+  - polvo
+  - tragué polvo
+  - mucho polvo
+  - tos
+  - no paro de toser
+  - pecho apretado
+  - silbido en el pecho
+  - asma
+  - ataque de asma
+  - crisis de asma
+  - bomba para el asma
+required_fields:
+  - breathing_difficulty
+  - asthma_history
+  - dust_exposure
+  - speech
+  - duration
+tree:
+  - id: respiratorio_q1
+    field: dust_exposure
+    question: "¿Estuviste expuesto/a a polvo de escombros o humo recientemente?"
+    triage_hint: moderate
+    rule_id: respiratorio_rule_dust
+  - id: respiratorio_q2
+    field: breathing_difficulty
+    question: "¿Qué tanto te cuesta respirar ahora mismo (leve, moderado, mucho)?"
+    triage_hint: severe
+    rule_id: respiratorio_rule_breathing
+  - id: respiratorio_q3
+    field: speech
+    question: "¿Puedes hablar frases completas o te quedas sin aire al hablar?"
+    triage_hint: severe
+    rule_id: respiratorio_rule_speech
+  - id: respiratorio_q4
+    field: asthma_history
+    question: "¿Tienes asma u otra condición respiratoria? ¿Tienes tu inhalador a mano?"
+    triage_hint: moderate
+    rule_id: respiratorio_rule_asthma
+  - id: respiratorio_q5
+    field: duration
+    question: "¿Desde cuándo te sientes así?"
+    triage_hint: moderate
+    rule_id: respiratorio_rule_duration
+advice:
+  Leve: "Parece irritación respiratoria leve por polvo. Aléjate del polvo, cúbrete nariz y boca con un paño húmedo, respira aire limpio y toma agua. Si tienes asma y inhalador, úsalo según tu indicación. Si la tos o ahogo aumentan, busca atención."
+  Moderado: "Tu dificultad respiratoria necesita evaluación médica pronto. Si tienes inhalador, úsalo; mantente en un lugar ventilado y sin polvo. Acude a un centro de salud si no mejora en poco tiempo."
+  Severo: "Esto puede ser una emergencia: si te cuesta mucho respirar, no puedes hablar de corrido, tienes los labios morados o sientes que te ahogas, busca atención de emergencia AHORA. En Venezuela llama al 171; fuera de Venezuela, al número de emergencias local. Si tienes inhalador de rescate, úsalo mientras llega ayuda."

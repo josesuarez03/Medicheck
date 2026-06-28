@@ -1,8 +1,0 @@
-boto3
-celery
-cryptography
-pika
-pymongo
-python-dotenv
-redis
-requests

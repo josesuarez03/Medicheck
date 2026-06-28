@@ -1,0 +1,51 @@
+case_id: insomnio_pesadillas_case
+name: Insomnio y pesadillas relacionadas al evento
+intent_keywords:
+  - no puedo dormir
+  - no logro dormir
+  - no pego ojo
+  - pesadillas
+  - sueño con el terremoto
+  - me despierto asustado
+  - me despierto sobresaltado
+  - duermo poquito
+  - tengo miedo de dormir
+  - cada vez que cierro los ojos
+  - desvelado
+  - insomnio
+required_fields:
+  - sleep_pattern
+  - nightmares
+  - cause
+  - duration
+  - daytime_impact
+tree:
+  - id: insomnio_q1
+    field: sleep_pattern
+    question: "¿Te cuesta quedarte dormido/a, te despiertas en la noche, o ambas?"
+    triage_hint: moderate
+    rule_id: insomnio_rule_pattern
+  - id: insomnio_q2
+    field: nightmares
+    question: "¿Tienes pesadillas o sueños relacionados con lo que viviste?"
+    triage_hint: moderate
+    rule_id: insomnio_rule_nightmares
+  - id: insomnio_q3
+    field: cause
+    question: "¿Sientes que es por miedo, por estar en alerta, o por las condiciones donde duermes?"
+    triage_hint: moderate
+    rule_id: insomnio_rule_cause
+  - id: insomnio_q4
+    field: daytime_impact
+    question: "¿Cómo te sientes durante el día por no dormir bien?"
+    triage_hint: moderate
+    rule_id: insomnio_rule_impact
+  - id: insomnio_q5
+    field: duration
+    question: "¿Desde cuándo te pasa esto?"
+    triage_hint: moderate
+    rule_id: insomnio_rule_duration
+advice:
+  Leve: "Dormir mal tras un evento así es muy común. Ayuda mantener un horario fijo, evitar pantallas y cafeína antes de dormir, y una rutina de calma (respiración lenta, luz baja). Si llegan pesadillas, recuerda que estás a salvo ahora. Suele mejorar con los días."
+  Moderado: "Si el insomnio y las pesadillas persisten varias semanas y te afectan de día, conviene apoyo de un psicólogo o profesional de salud mental; las pesadillas post-trauma se pueden trabajar. Mantén higiene del sueño y técnicas de relajación."
+  Severo: "El insomnio severo prolongado afecta mucho tu salud. Busca apoyo profesional de salud mental. Si junto al insomnio aparecen pensamientos de hacerte daño, trátalo como emergencia: en Venezuela llama al 171; fuera de Venezuela, al número de emergencias o línea de crisis local."

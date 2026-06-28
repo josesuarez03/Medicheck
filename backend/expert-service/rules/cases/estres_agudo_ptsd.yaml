@@ -1,0 +1,53 @@
+case_id: estres_agudo_ptsd_case
+name: Estrés agudo / estrés postraumático tras el sismo
+intent_keywords:
+  - no puedo sacarme el terremoto de la cabeza
+  - revivo el temblor
+  - flashbacks
+  - me asusto con cualquier ruido
+  - cada ruido me sobresalta
+  - estoy en alerta todo el tiempo
+  - pesadillas con el sismo
+  - no me siento seguro
+  - me bloqueo
+  - me siento como ido
+  - como si volviera a pasar
+  - estrés postraumático
+  - trauma
+  - todavía tiemblo del susto
+required_fields:
+  - event_exposure
+  - reexperiencing
+  - hypervigilance
+  - duration
+  - functional_impact
+tree:
+  - id: ptsd_q1
+    field: event_exposure
+    question: "¿Viviste de cerca el terremoto o alguna situación muy impactante durante estos días?"
+    triage_hint: moderate
+    rule_id: ptsd_rule_event
+  - id: ptsd_q2
+    field: reexperiencing
+    question: "¿Reviven imágenes, pesadillas o sensaciones del momento aunque no quieras?"
+    triage_hint: moderate
+    rule_id: ptsd_rule_reexperiencing
+  - id: ptsd_q3
+    field: hypervigilance
+    question: "¿Te sientes en alerta constante, te sobresaltas con ruidos o te cuesta relajarte?"
+    triage_hint: moderate
+    rule_id: ptsd_rule_hypervigilance
+  - id: ptsd_q4
+    field: functional_impact
+    question: "¿Esto está afectando tu día a día (dormir, comer, trabajar, relacionarte)?"
+    triage_hint: moderate
+    rule_id: ptsd_rule_functional
+  - id: ptsd_q5
+    field: duration
+    question: "¿Desde cuándo te sientes así?"
+    triage_hint: moderate
+    rule_id: ptsd_rule_duration
+advice:
+  Leve: "Lo que sientes es una reacción normal ante algo muy difícil. Ayuda mantener rutinas simples, dormir y comer regular, limitar la exposición a noticias del desastre y hablar de lo que sentiste con alguien de confianza. Respiración lenta varias veces al día puede bajar la activación. Si en semanas no mejora, busca apoyo psicológico."
+  Moderado: "Tus síntomas merecen acompañamiento profesional. Te recomiendo buscar a un psicólogo o profesional de salud mental para procesar lo vivido; el estrés postraumático responde bien al tratamiento. Mientras tanto, mantén rutinas, contacto con personas de confianza y técnicas de respiración."
+  Severo: "Esto te está afectando mucho y no deberías atravesarlo solo/a. Busca apoyo de un psicólogo o profesional de salud mental cuanto antes. Si aparecen pensamientos de hacerte daño, trátalo como emergencia: en Venezuela llama al 171; fuera de Venezuela, al número de emergencias o línea de crisis local."

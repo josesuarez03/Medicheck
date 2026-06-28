@@ -1,0 +1,55 @@
+case_id: deshidratacion_case
+name: Deshidratación o intoxicación por agua/alimentos en mal estado
+intent_keywords:
+  - deshidratado
+  - deshidratada
+  - mucha sed
+  - no he tomado agua
+  - no hay agua
+  - diarrea
+  - vómito
+  - vómitos
+  - me cayó mal la comida
+  - agua contaminada
+  - intoxicación
+  - me intoxiqué
+  - dolor de barriga
+  - dolor de estómago
+  - no orino
+  - flojera
+required_fields:
+  - source
+  - fluids_intake
+  - vomiting_diarrea
+  - urine
+  - duration
+tree:
+  - id: deshidratacion_q1
+    field: source
+    question: "¿Crees que fue por agua o comida en mal estado, o por no poder tomar suficiente líquido?"
+    triage_hint: moderate
+    rule_id: deshidratacion_rule_source
+  - id: deshidratacion_q2
+    field: vomiting_diarrea
+    question: "¿Tienes vómitos o diarrea? ¿Cuántas veces al día?"
+    triage_hint: moderate
+    rule_id: deshidratacion_rule_vomiting
+  - id: deshidratacion_q3
+    field: fluids_intake
+    question: "¿Puedes retener líquidos o vomitas todo lo que tomas?"
+    triage_hint: severe
+    rule_id: deshidratacion_rule_fluids
+  - id: deshidratacion_q4
+    field: urine
+    question: "¿Estás orinando con normalidad o casi no orinas?"
+    triage_hint: severe
+    rule_id: deshidratacion_rule_urine
+  - id: deshidratacion_q5
+    field: duration
+    question: "¿Desde cuándo te sientes así?"
+    triage_hint: moderate
+    rule_id: deshidratacion_rule_duration
+advice:
+  Leve: "Parece deshidratación leve. Toma líquidos en pequeños sorbos frecuentes, idealmente suero oral (1 litro de agua segura + 6 cucharaditas de azúcar + media de sal). Evita agua de origen dudoso; hiérvela si puedes. Si empeora, busca atención."
+  Moderado: "Tu cuadro necesita atención médica pronto, sobre todo si hay vómitos o diarrea frecuentes. Sigue tomando suero oral y acude a un centro de salud. Si el agua disponible no es segura, hiérvela o trátala antes de beberla."
+  Severo: "Esto puede ser peligroso: si no retienes líquidos, casi no orinas, te desmayas o estás muy débil, busca atención de emergencia AHORA. En Venezuela llama al 171; fuera de Venezuela, al número de emergencias local. La deshidratación grave puede requerir suero intravenoso."

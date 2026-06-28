@@ -4,26 +4,41 @@ import os
 import uuid
 from typing import Any
 
-from celery import Celery
+# Celery/RabbitMQ fueron eliminados en esta rama (ai-microservices-disaster).
+# El pipeline ETL hacia Django/Mongo ya no existe. Se conserva el modulo para
+# no romper imports y por si se reconecta otra forma de persistencia, pero el
+# cliente Celery se vuelve opcional: si la libreria no esta, las funciones de
+# encolado operan como no-op.
+try:  # pragma: no cover
+    from celery import Celery
+except Exception:  # pragma: no cover
+    Celery = None
+
 import redis
 
 
-_BROKER_URL = os.getenv(
-    "CELERY_BROKER_URL",
-    f"amqp://{os.getenv('RABBITMQ_DEFAULT_USER')}:{os.getenv('RABBITMQ_DEFAULT_PASS')}@rabbitmq:5672//",
-)
-_RESULT_BACKEND = os.getenv(
-    "CELERY_RESULT_BACKEND",
-    f"redis://:{os.getenv('REDIS_PASSWORD')}@{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB_CELERY_RESULTS')}",
-)
+def _as_int(value, default):
+    try:
+        if value in (None, ""):
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+_BROKER_URL = os.getenv("CELERY_BROKER_URL", "")
+_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "")
 _ETL_QUEUE = os.getenv("ETL_QUEUE", "etl_queue")
 _REDIS_HOST = os.getenv("REDIS_HOST")
-_REDIS_PORT = int(os.getenv("REDIS_PORT"))
+_REDIS_PORT = _as_int(os.getenv("REDIS_PORT"), 6379)
 _REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
-_REDIS_DB_EPHEMERAL = int(os.getenv("REDIS_DB_EPHEMERAL"))
-_ETL_INACTIVITY_SECONDS = max(30, int(os.getenv("ETL_INACTIVITY_SECONDS", "900")))
+_REDIS_DB_EPHEMERAL = _as_int(os.getenv("REDIS_DB_EPHEMERAL"), 6)
+_ETL_INACTIVITY_SECONDS = max(30, _as_int(os.getenv("ETL_INACTIVITY_SECONDS"), 900))
 
-celery_client = Celery("gateway_etl_dispatcher", broker=_BROKER_URL, backend=_RESULT_BACKEND or None)
+if Celery is not None and _BROKER_URL:
+    celery_client = Celery("gateway_etl_dispatcher", broker=_BROKER_URL, backend=_RESULT_BACKEND or None)
+else:
+    celery_client = None
 
 
 def _redis_client():
@@ -44,12 +59,18 @@ def _inactivity_key(user_id: str, conversation_id: str) -> str:
 
 def mark_inactivity_token(*, user_id: str, conversation_id: str) -> str:
     token = str(uuid.uuid4())
-    _redis_client().set(_inactivity_key(user_id, conversation_id), token, ex=_ETL_INACTIVITY_SECONDS * 4)
+    try:
+        _redis_client().set(_inactivity_key(user_id, conversation_id), token, ex=_ETL_INACTIVITY_SECONDS * 4)
+    except Exception:
+        pass
     return token
 
 
 def clear_inactivity_token(*, user_id: str, conversation_id: str) -> None:
-    _redis_client().delete(_inactivity_key(user_id, conversation_id))
+    try:
+        _redis_client().delete(_inactivity_key(user_id, conversation_id))
+    except Exception:
+        pass
 
 
 def enqueue_etl_dispatch(
@@ -61,6 +82,9 @@ def enqueue_etl_dispatch(
     django_api_url: str | None = None,
 ) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
+    if celery_client is None:
+        # ETL deshabilitado en esta rama (sin Celery/RabbitMQ/Django).
+        return {"status": "disabled", "run_id": run_id, "queue": _ETL_QUEUE}
     payload = {
         "user_id": user_id,
         "conversation_id": conversation_id,
@@ -92,8 +116,12 @@ def schedule_inactivity_etl(
     timeout_seconds: int | None = None,
 ) -> dict[str, Any]:
     inactivity_seconds = max(30, int(timeout_seconds or _ETL_INACTIVITY_SECONDS))
-    token = mark_inactivity_token(user_id=user_id, conversation_id=conversation_id)
     run_id = str(uuid.uuid4())
+    if celery_client is None:
+        # ETL deshabilitado en esta rama (sin Celery/RabbitMQ/Django).
+        return {"status": "disabled", "run_id": run_id, "queue": _ETL_QUEUE,
+                "inactivity_seconds": inactivity_seconds}
+    token = mark_inactivity_token(user_id=user_id, conversation_id=conversation_id)
     payload = {
         "user_id": user_id,
         "conversation_id": conversation_id,

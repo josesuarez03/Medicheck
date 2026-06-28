@@ -25,14 +25,31 @@ class Config:
     # Configuraciones de la aplicación
     DEBUG = os.getenv('DEBUG') == 'True'
     SECRET_KEY = os.getenv("SECRET_KEY",)
-    DJANGO_SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
     JWT_SECRET_ENV = os.getenv("JWT_SECRET_KEY")
-    FLASK_API_KEY = os.getenv("FLASK_API_KEY")
-    DJANGO_API_URL = os.getenv("DJANGO_API_URL")
-    DJANGO_API_URL_FLASK = os.getenv("DJANGO_API_URL_FLASK")
-    MONGO_ENCRYPTION_KEY = os.getenv(
-        "MONGO_ENCRYPTION_KEY",
-        base64.urlsafe_b64encode(hashlib.sha256((SECRET_KEY or "").encode("utf-8")).digest()).decode("utf-8"),
+
+    # Secreto HMAC de comunicacion interna gateway<->ai-service. Heredado del
+    # nombre antiguo FLASK_API_KEY (cuando expert-service era Flask). Ya no es
+    # obligatorio en validate(), pero sigue recomendado en produccion.
+    INTERNAL_SHARED_SECRET = os.getenv("INTERNAL_SHARED_SECRET") or os.getenv("FLASK_API_KEY")
+    FLASK_API_KEY = INTERNAL_SHARED_SECRET  # alias retrocompatible
+
+    # Clave de cifrado de conversaciones (Fernet). Antes MONGO_ENCRYPTION_KEY.
+    # Orden de precedencia: CHAT_ENCRYPTION_KEY -> MONGO_ENCRYPTION_KEY (legacy)
+    # -> derivada de SECRET_KEY (no recomendado en produccion).
+    CHAT_ENCRYPTION_KEY = (
+        os.getenv("CHAT_ENCRYPTION_KEY")
+        or os.getenv("MONGO_ENCRYPTION_KEY")
+        or base64.urlsafe_b64encode(
+            hashlib.sha256((SECRET_KEY or "").encode("utf-8")).digest()
+        ).decode("utf-8")
+    )
+    MONGO_ENCRYPTION_KEY = CHAT_ENCRYPTION_KEY  # alias retrocompatible
+
+    # Enfoque dual dentro/fuera de Venezuela.
+    DEFAULT_USER_COUNTRY = os.getenv("DEFAULT_USER_COUNTRY", "VE")
+    DISASTER_CONTEXT_LABEL = os.getenv(
+        "DISASTER_CONTEXT_LABEL",
+        "terremoto Venezuela 2026",
     )
 
     # Credenciales para Amazon Web Services
@@ -43,6 +60,12 @@ class Config:
     BEDROCK_EMBEDDING_DIMENSIONS = _as_int(os.getenv("BEDROCK_EMBEDDING_DIMENSIONS"), 1024)
     BEDROCK_CLAUDE_MODEL_ID = os.getenv("BEDROCK_CLAUDE_MODEL_ID")
     BEDROCK_CLAUDE_INFERENCE_PROFILE_ID = os.getenv("BEDROCK_CLAUDE_INFERENCE_PROFILE_ID")
+    # Limitador de concurrencia hacia Bedrock: acota cuantas invocaciones a
+    # Claude corren en paralelo para evitar throttling (429) y controlar costos
+    # ante picos de chats simultaneos. El exceso espera brevemente y, si no
+    # adquiere turno dentro del timeout, se rechaza con un error claro.
+    BEDROCK_MAX_CONCURRENCY = _as_int(os.getenv("BEDROCK_MAX_CONCURRENCY"), 4)
+    BEDROCK_ACQUIRE_TIMEOUT_SECONDS = _as_int(os.getenv("BEDROCK_ACQUIRE_TIMEOUT_SECONDS"), 30)
 
     POSTGRES_HOST = os.getenv("POSTGRES_HOST")
     POSTGRES_PORT = _as_int(os.getenv("POSTGRES_PORT"), 5432)
@@ -50,12 +73,7 @@ class Config:
     POSTGRES_USER = os.getenv("POSTGRES_USER")
     POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 
-    # Configuración MongoDB - usar nombres de host de Docker si estamos en contenedores
-    MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
-    MONGO_PORT = _as_int(os.getenv("MONGO_PORT"), 27017)
-    MONGO_DB = os.getenv("MONGO_INITDB_DATABASE", "DB")
-    MONGO_USER = os.getenv("MONGO_INITDB_ROOT_USERNAME")
-    MONGO_PASS = os.getenv("MONGO_INITDB_ROOT_PASSWORD")
+    # MongoDB eliminado en esta rama (ai-microservices-disaster).
 
     # Configuración Redis - usar nombres de host de Docker si estamos en contenedores
     REDIS_HOST = os.getenv("REDIS_HOST")
@@ -87,7 +105,6 @@ class Config:
     JWT_SECRET = JWT_SECRET_ENV
     JWT_SECRET_KEY = JWT_SECRET
     JWT_ALGORITHM =  os.getenv("JWT_ALGORITHM")
-    DJANGO_INTEGRATION = os.getenv("DJANGO_INTEGRATION", "False") == "True"
 
     # Configuraciones de logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
@@ -95,27 +112,24 @@ class Config:
 
     @classmethod
     def validate(cls):
-        if cls.JWT_SECRET_ENV and (
-            (cls.DJANGO_SECRET_KEY and cls.JWT_SECRET_ENV != cls.DJANGO_SECRET_KEY)
-            or (cls.SECRET_KEY and cls.JWT_SECRET_ENV != cls.SECRET_KEY)
-        ):
+        if cls.JWT_SECRET_ENV and cls.SECRET_KEY and cls.JWT_SECRET_ENV != cls.SECRET_KEY:
             logger.warning(
                 "JWT_SECRET_KEY esta configurada y se usara como clave dedicada para validar JWT."
             )
 
+        if not cls.INTERNAL_SHARED_SECRET:
+            logger.warning(
+                "INTERNAL_SHARED_SECRET/FLASK_API_KEY no configurado; la comunicacion "
+                "interna gateway<->ai-service no podra validarse por HMAC."
+            )
+
         required_vars = {
-            "FLASK_API_KEY": cls.FLASK_API_KEY,
             "REDIS_PASSWORD": cls.REDIS_PASSWORD,
             "REDIS_HOST": cls.REDIS_HOST,
             "REDIS_PORT": cls.REDIS_PORT,
             "SECRET_KEY": cls.SECRET_KEY,
-            "MONGO_ENCRYPTION_KEY": cls.MONGO_ENCRYPTION_KEY,
+            "CHAT_ENCRYPTION_KEY": cls.CHAT_ENCRYPTION_KEY,
             "JWT_ALGORITHM": cls.JWT_ALGORITHM,
-            "MONGO_HOST": cls.MONGO_HOST,
-            "MONGO_PORT": cls.MONGO_PORT,
-            "MONGO_DB": cls.MONGO_DB,
-            "MONGO_INITDB_ROOT_USERNAME": cls.MONGO_USER,
-            "MONGO_INITDB_ROOT_PASSWORD": cls.MONGO_PASS,
         }
         missing = [name for name, value in required_vars.items() if value in (None, "", 0)]
         if missing:
@@ -125,6 +139,6 @@ class Config:
         try:
             from cryptography.fernet import Fernet
 
-            Fernet(cls.MONGO_ENCRYPTION_KEY.encode("utf-8"))
+            Fernet(cls.CHAT_ENCRYPTION_KEY.encode("utf-8"))
         except Exception as exc:
-            raise EnvironmentError("MONGO_ENCRYPTION_KEY no es una clave Fernet valida.") from exc
+            raise EnvironmentError("CHAT_ENCRYPTION_KEY no es una clave Fernet valida.") from exc

@@ -1,0 +1,55 @@
+case_id: trauma_fisico_case
+name: Trauma físico por terremoto (heridas, fracturas, aplastamiento)
+intent_keywords:
+  - me lastimé
+  - me hirieron
+  - herida
+  - me corté
+  - fractura
+  - me rompí
+  - hueso
+  - sangrado
+  - sangre
+  - me cayó algo encima
+  - escombros
+  - aplastamiento
+  - atrapado
+  - golpe fuerte
+  - me golpeé
+  - me machucó
+required_fields:
+  - mechanism
+  - bleeding
+  - mobility
+  - location
+  - time_since
+tree:
+  - id: trauma_q1
+    field: mechanism
+    question: "¿Qué te pasó exactamente? (te cayó algo encima, te golpeaste, te cortaste, quedaste atrapado/a)"
+    triage_hint: severe
+    rule_id: trauma_rule_mechanism
+  - id: trauma_q2
+    field: bleeding
+    question: "¿Hay sangrado? ¿Es leve o no para de sangrar?"
+    triage_hint: severe
+    rule_id: trauma_rule_bleeding
+  - id: trauma_q3
+    field: location
+    question: "¿En qué parte del cuerpo es la herida o el golpe?"
+    triage_hint: moderate
+    rule_id: trauma_rule_location
+  - id: trauma_q4
+    field: mobility
+    question: "¿Puedes mover la zona afectada o sientes que el hueso está fuera de lugar?"
+    triage_hint: severe
+    rule_id: trauma_rule_mobility
+  - id: trauma_q5
+    field: time_since
+    question: "¿Hace cuánto ocurrió?"
+    triage_hint: moderate
+    rule_id: trauma_rule_time
+advice:
+  Leve: "Parece una lesión leve. Limpia la herida con agua limpia, cúbrela y mantén la zona en reposo. Vigila signos de infección (enrojecimiento, pus, fiebre). Si empeora o aparece sangrado que no cede, busca atención médica."
+  Moderado: "Tu lesión necesita evaluación médica pronto. Inmoviliza la zona, controla el sangrado con presión limpia y acude a un centro de salud. Si estás en Venezuela y no puedes movilizarte, llama al 171 o a Protección Civil (0800-558.84.27 / 0800-266.84.46); si estás en otro país, a tu servicio de emergencias local."
+  Severo: "Esto puede ser grave. Si hay sangrado que no para, hueso expuesto, aplastamiento o no puedes mover un miembro, busca atención de emergencia AHORA. En Venezuela llama al 171 o Protección Civil; fuera de Venezuela, al número de emergencias de tu país. Aplica presión firme sobre el sangrado mientras llega ayuda."

@@ -107,28 +107,24 @@ async def orchestrate_chat(payload: dict[str, Any]) -> dict[str, Any]:
             "ai": ai_result,
         }
 
+    # Pipeline ETL hacia Django/Mongo DESACTIVADO en esta rama
+    # (ai-microservices-disaster): Celery/RabbitMQ/Django/Mongo fueron
+    # eliminados, no hay consumidor escuchando la cola. Se conserva
+    # etl_dispatcher.py por si se reconecta otra persistencia (probablemente
+    # sobre Postgres), pero aqui no se encola nada. etl_dispatch queda None.
     etl_dispatch = None
     ai_conversation_state = ai_result.get("conversation_state", {}) if isinstance(ai_result, dict) else {}
-    if isinstance(ai_conversation_state, dict) and user_id and resolved_conversation_id:
-        if ai_conversation_state.get("should_trigger_etl") is True:
-            clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
-            etl_dispatch = enqueue_etl_dispatch(
-                user_id=user_id,
-                conversation_id=resolved_conversation_id,
-                jwt_token=jwt_token,
-                reasons=[str(ai_conversation_state.get("etl_reason") or "closure_confirmed")],
-            )
-            ai_conversation_state["etl_dispatch"] = etl_dispatch
-        elif ai_conversation_state.get("awaiting_closure_confirmation") is True:
-            etl_dispatch = schedule_inactivity_etl(
-                user_id=user_id,
-                conversation_id=resolved_conversation_id,
-                jwt_token=jwt_token,
-                reasons=["inactivity_timeout"],
-            )
-            ai_conversation_state["etl_dispatch"] = etl_dispatch
-        else:
-            clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
+    # Bloque original de despacho ETL desactivado:
+    # if isinstance(ai_conversation_state, dict) and user_id and resolved_conversation_id:
+    #     if ai_conversation_state.get("should_trigger_etl") is True:
+    #         clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
+    #         etl_dispatch = enqueue_etl_dispatch(...)
+    #         ai_conversation_state["etl_dispatch"] = etl_dispatch
+    #     elif ai_conversation_state.get("awaiting_closure_confirmation") is True:
+    #         etl_dispatch = schedule_inactivity_etl(...)
+    #         ai_conversation_state["etl_dispatch"] = etl_dispatch
+    #     else:
+    #         clear_inactivity_token(user_id=user_id, conversation_id=resolved_conversation_id)
 
     return {
         "status": "ok",
