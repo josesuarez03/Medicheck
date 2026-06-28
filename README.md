@@ -1,202 +1,140 @@
-# MediCheck - Sistema Inteligente de Triaje Medico
+# MediCheck — API de Inteligencia para Respuesta a Desastre
 
-Aplicacion web de triaje medico orientada a entornos laborales y educativos, desarrollada como TFG.
+API pura de triaje y conversación médica para el **terremoto de Venezuela (24 jun 2026)**.
+Expone únicamente el núcleo de IA (gateway + expert-service + ai-service) como HTTP + WebSocket,
+consumible por cualquier cliente externo (bot de Telegram/WhatsApp, app móvil, frontend ligero).
 
-Integra:
-- Frontend en Next.js (pacientes y doctores)
-- API principal en Django REST (usuarios, autenticacion y datos clinicos)
-- Microservicio de chat en Flask + Socket.IO (triaje conversacional)
-- PostgreSQL, MongoDB y Redis
-- Nginx + Certbot para despliegue
+**Rama de respaldo con el stack completo (Next.js, Django, MongoDB):** [`main-fullstack`](../../tree/main-fullstack)
 
-## Caracteristicas principales
+## Qué se eliminó del stack original
 
-- Registro/inicio de sesion con JWT y Google OAuth
-- Perfiles diferenciados de paciente y doctor
-- Chat de triaje en tiempo real (HTTP + WebSocket)
-- Clasificacion de triaje y recomendaciones iniciales
-- Historial y actualizacion de datos medicos del paciente
-- Gestion de conversaciones (activar, archivar, eliminar)
+**Eliminado:** Django, Next.js, MongoDB, Celery, RabbitMQ, Flower.
 
-## Arquitectura
+**Conservado:** `gateway`, `expert-service`, `ai-service` (FastAPI), Postgres (pgvector), Redis.
 
-Servicios definidos en `docker-compose.yml`:
+Principio de cambio: **cirugía mínima, no reescritura.** Se desconectaron las dependencias
+muertas preservando la lógica de negocio (lifecycle de conversaciones, cifrado, scoring),
+migrando el backend de datos activos a Redis.
 
-- `frontend` (Next.js) -> `http://localhost:3000`
-- `django-api-principal` (Django REST) -> `http://localhost:8000`
-- `flask-api-chat` (Flask + Socket.IO) -> `http://localhost:5000`
-- `postgres` (PostgreSQL) -> `localhost:5432`
-- `mongo` (MongoDB) -> `localhost:27017`
-- `redis` -> `localhost:6379`
-- `nginx` (reverse proxy) -> `http://localhost`
+## Arquitectura (docker-compose)
 
-## Stack tecnologico
+| Servicio | URL | Rol |
+|---|---|---|
+| `gateway` (FastAPI) | `http://localhost:5000` | Entrada HTTP/WebSocket, emite/verifica JWT |
+| `ai-service` (FastAPI) | `http://localhost:5001` | Conversación (Claude/Bedrock), RAG, cifrado |
+| `expert-service` (FastAPI) | `http://localhost:5002` | Detección de red flags / emergencia |
+| `postgres` (pgvector) | `localhost:5432` | Embeddings + catálogo de condiciones |
+| `redis` | `localhost:6379` | Conversaciones activas (cifradas) + contexto |
+| Observabilidad | — | Prometheus, Grafana, Jaeger, Dozzle, cAdvisor |
 
-- Frontend: Next.js 15, React 19, TypeScript, Tailwind CSS
-- Backend API: Django 5, Django REST Framework, SimpleJWT
-- Chatbot: Flask 3, Flask-SocketIO, PyYAML, FAISS, NLTK
-- Datos: PostgreSQL, MongoDB, Redis
-- Infra: Docker Compose, Nginx, Certbot
+## Identidad de usuario (sin Django)
 
-## Requisitos
+El cliente obtiene un JWT de corta duración:
 
-- Docker y Docker Compose
-- (Opcional para desarrollo local) Node.js 20+, npm, Python 3.13+
-
-## Puesta en marcha rapida (Docker)
-
-1. Clonar el repositorio.
-2. Crear y completar el archivo `.env` en la raiz del proyecto.
-3. Construir y levantar servicios:
-
-```bash
-docker compose up --build
+```
+POST /auth/session
+Body: {"user_id": "<UUID opcional>"}   # si se omite, el gateway lo genera
+Resp: {"access_token": "<JWT>", "user_id": "...", "token_type": "bearer", "expires_in": 86400}
 ```
 
-4. Abrir:
-- Frontend: `http://localhost:3000`
-- API Django: `http://localhost:8000`
-- API Chat Flask: `http://localhost:5000/chat`
+Ese token se usa como `Authorization: Bearer <JWT>` en HTTP y en el WebSocket
+(`{"type":"auth","token":"<JWT>"}`). Es el **mismo esquema JWT** en ambos canales.
 
-Para detener:
+## Seguridad
 
-```bash
-docker compose down
-```
+- **Cifrado en reposo:** `messages` y `medical_context` cifrados con Fernet
+  (`CHAT_ENCRYPTION_KEY`) antes de guardarse en Redis.
+- **JWT robusto:** sin `JWT_SECRET` el gateway **no arranca** (se eliminó el fallback inseguro).
+  Token inválido o ausente → 401.
+- **Concurrencia hacia Bedrock:** limitador (`BEDROCK_MAX_CONCURRENCY`) que acota invocaciones
+  paralelas para evitar throttling. FastAPI async + workers de uvicorn + aislamiento de estado
+  en Redis soportan múltiples chats abiertos simultáneamente.
 
-## Variables de entorno (minimas)
+## Motor semántico (RAG sobre pgvector)
 
-Define estas variables en `.env` (sin subir secretos a GitHub):
+Captura **señales psicológicas** como primera clase (`EMOTIONAL_STATE`, `TRAUMA_EXPOSURE`,
+`SUICIDAL_RISK`, `GRIEF`, `SOCIAL_SUPPORT`, `CRISIS_STATE`), de modo que conversaciones de
+angustia/duelo/crisis también generan embedding y alimentan el contexto.
 
-### Django / comun
+### Catálogo de condiciones
 
-- `DJANGO_SECRET_KEY`
-- `DEBUG`
-- `ALLOWED_HOSTS`
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- `JWT_ALGORITHM`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `REDIS_HOST`
-- `REDIS_PORT`
-- `REDIS_DB1`
-
-### Flask / chatbot
-
-- `SECRET_KEY` (debe ser coherente con Django)
-- `MONGO_INITDB_ROOT_USERNAME`
-- `MONGO_INITDB_ROOT_PASSWORD`
-- `MONGO_INITDB_DATABASE`
-- `MONGO_HOST`
-- `MONGO_PORT`
-- `REDIS_DB`
-- `DJANGO_API_URL`
-- `AWS_REGION`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `BEDROCK_EMBEDDING_MODEL_ID` (opcional segun modo)
-- `BEDROCK_CLAUDE_MODEL_ID` (opcional segun modo)
-- `BEDROCK_CLAUDE_INFERENCE_PROFILE_ID` (opcional segun modo)
-
-### Frontend
-
-- `NEXT_PUBLIC_API_URL` (ej. `http://localhost:8000/`)
-- `NEXT_PUBLIC_CHAT_API_URL` (ej. `http://localhost:5000/chat/`)
-- `NEXT_PUBLIC_SOCKETIO_URL` (ej. `http://localhost:5000`)
-- `NEXT_PUBLIC_GOOGLE_CLIENT_ID`
-
-## Desarrollo local (sin Docker)
-
-### 1) Django API
+`backend/ai-service/scripts/data/conditions.yaml` define ~30 condiciones físicas y psicológicas
+(sinónimos coloquiales, señales, urgencia, next_step, country_context). Se cargan en
+`rag.conditions_catalog` y se recuperan por similitud por turno para inyectarlas en el prompt.
 
 ```bash
-cd backend/django_services
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 0.0.0.0:8000
+cd backend/ai-service
+python scripts/seed_conditions.py
 ```
 
-### 2) Flask chat
+## Sistema experto
+
+`expert-service` detecta emergencias físicas y psicológicas y escala de inmediato.
+La **ideación suicida/autolesión escala siempre** (`emergency_triggered=True`).
+
+Casos nuevos de catástrofe: trauma físico, deshidratación, crisis respiratoria por polvo,
+estrés agudo/TEPT, duelo agudo, crisis de pánico, insomnio/pesadillas, ideación suicida,
+ansiedad por separación, duelo migratorio (diáspora).
+
+## Contexto dual Venezuela / fuera de Venezuela
+
+Las recomendaciones usan la línea **171** y Protección Civil (0800-558.84.27 / 0800-266.84.46)
+para usuarios en Venezuela, y un mensaje genérico para quienes están fuera.
+`DEFAULT_USER_COUNTRY` (default `VE`) es el respaldo cuando no se conoce el país.
+
+## Puesta en marcha
 
 ```bash
-cd backend/flask-services
-pip install -r requirements.txt
-python src/app.py
+cp .env.example .env   # completa secretos
+docker compose up -d postgres redis expert-service ai-service gateway
+
+# (opcional) cargar el catálogo de condiciones:
+docker compose exec ai-service python scripts/seed_conditions.py
 ```
 
-### 3) Frontend
+## Variables de entorno
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Ver `.env.example`. Obligatorias para arrancar: `SECRET_KEY`/`JWT_SECRET_KEY`,
+`JWT_ALGORITHM`, `REDIS_*`, `POSTGRES_*`.
 
-## Endpoints principales
-
-### Django
-
-- `POST /login/`
-- `POST /register/`
-- `POST /google/login/`
-- `GET/PUT /profile/`
-- `POST /password/change/`
-- `POST /api/patients/medical_data_update/`
-
-### Flask chat
-
-- `POST /chat/message`
-- `GET /chat/conversations`
-- `GET /chat/conversation/<conversation_id>`
-- `POST /chat/conversation/<conversation_id>/archive`
-- `POST /chat/conversation/<conversation_id>/recover`
-- `DELETE /chat/conversation/<conversation_id>`
-- `POST /chat/process_medical_data`
-
-Eventos Socket.IO:
-- `chat_message`
-- `chat_response`
+Recomendadas en producción: `CHAT_ENCRYPTION_KEY` (clave Fernet dedicada),
+`INTERNAL_SHARED_SECRET`, credenciales AWS para Bedrock.
 
 ## Tests
 
-Pruebas disponibles en `backend/flask-services/tests/`:
-
 ```bash
-python -m unittest backend/flask-services/tests/test_expert_system.py
-python -m unittest backend/flask-services/tests/test_llm_first_controller.py
-python -m unittest backend/flask-services/tests/test_chatbot_pain_policy.py
-python -m unittest backend/flask-services/tests/test_chat_flow_etl_integration.py
-python -m unittest backend/flask-services/tests/test_etl_runner.py
-python -m unittest backend/flask-services/tests/test_etl_trigger.py
+cd backend/ai-service
+python -m pytest tests/ -v
+
+cd backend/expert-service
+python -m pytest tests/ -v
 ```
 
 ## Estructura del proyecto
 
 ```text
-TFG/
-├── frontend/                 # Aplicacion Next.js
+Medicheck/
 ├── backend/
-│   ├── django_services/      # API principal (usuarios y datos clinicos)
-│   └── flask-services/       # Chatbot y logica de triaje
-├── docs/
-│   ├── plans/                # Planes de trabajo y mejoras
-│   ├── academic/             # Poster, gantt y material academico de apoyo
-│   └── architecture/         # Diagramas y artefactos de arquitectura
-├── nginx/                    # Configuracion de proxy y SSL
+│   ├── gateway/          # FastAPI — entrada HTTP/WS, JWT, proxy a ai/expert
+│   ├── ai-service/       # FastAPI — conversación, RAG, embeddings, cifrado
+│   │   ├── scripts/      # seed_conditions.py + conditions.yaml
+│   │   └── tests/
+│   └── expert-service/   # FastAPI — sistema experto, reglas YAML/JSON, triaje
+│       └── rules/        # casos (10 nuevos) + shared (emergency, triage_policy)
+├── docker/
+│   ├── postgres/init/    # SQL de esquema y catálogo de condiciones
+│   └── observability/    # Prometheus, Grafana, Jaeger
+├── docs/superpowers/specs/
 ├── docker-compose.yml
+├── .env.example
 └── README.md
 ```
 
-## Aviso
+## Aviso clínico
 
-Este sistema ofrece apoyo de triaje inicial y no sustituye la evaluacion clinica profesional.
+Este sistema ofrece apoyo de triaje inicial y no sustituye la evaluación clínica profesional.
+En emergencias graves, contacta servicios de emergencia locales (Venezuela: 171).
 
 ## Licencia
 
-Este proyecto se distribuye bajo licencia propietaria ("All rights reserved").
-Consulta `LICENSE` para condiciones de uso y autorizaciones.
-
+Licencia propietaria — "All rights reserved". Consulta `LICENSE` para condiciones de uso.
