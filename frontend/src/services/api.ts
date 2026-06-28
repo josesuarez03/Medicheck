@@ -137,11 +137,12 @@ export const changePassword = async (data: {
   old_password: string;
   new_password: string;
   confirm_password: string;
-}): Promise<void> => {
+}): Promise<{ access: string; refresh: string; profile_complete: boolean; user: UserProfile }> => {
   const response = await API.post("password/change/", data);
   if (response.status !== 200) {
     throw new Error("Error al cambiar la contraseña");
   }
+  return response.data;
 };
 
 export default API;

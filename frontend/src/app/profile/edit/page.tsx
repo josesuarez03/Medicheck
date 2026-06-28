@@ -174,7 +174,7 @@ export default function EditProfile(){
                             Volver
                         </Button>
                         {/* Icono del perfil */}
-                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 text-blue-800 text-2xl">
+                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/12 text-primary text-2xl">
                             <TbUser />
                         </div>
                     </div>

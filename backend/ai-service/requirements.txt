@@ -1,0 +1,11 @@
+boto3
+cryptography
+fastapi
+numpy
+pymongo
+rapidfuzz
+redis[hiredis]
+spacy>=3.7
+uvicorn[standard]
+psycopg[binary]>=3.2
+pgvector>=0.3

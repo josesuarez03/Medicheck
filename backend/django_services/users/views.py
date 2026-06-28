@@ -7,6 +7,7 @@ from django.http import Http404
 from django.core.exceptions import PermissionDenied
 from django.core import signing
 from django.core.signing import BadSignature, SignatureExpired
+from django.db.models import Count, Prefetch
 import hmac
 import hashlib
 import json
@@ -29,6 +30,7 @@ from django.template.loader import render_to_string
 from django.utils.crypto import get_random_string
 from django.core.cache import cache
 import logging
+import requests
 
 from .serializers import (
     UserSerializer, UserProfileSerializer, UserProfileSerializerBasic,
@@ -36,14 +38,19 @@ from .serializers import (
     PatientSerializer, DoctorSerializer, PatientBasicSerializer, ChatbotAnalysisSerializer,
     PasswordResetRequestSerializer, PasswordResetVerifySerializer,
     ChangePasswordSerializer, AccountDeleteSerializer, PatientHistoryEntrySerializer,
-    DoctorPatientRelationSerializer
+    DoctorPatientRelationSerializer, PatientClinicalSummarySerializer,
+    PatientClinicalSummaryContextSerializer
 )
-from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation
+from .models import Patient, Doctor, PatientHistoryEntry, DoctorPatientRelation, PatientClinicalSummary
 from .throttles import LoginRateThrottle, PasswordResetRateThrottle
 from .utils.audit import create_audit_entry
+from .utils.ai_service_sync import push_clinical_summary_to_ai
+from common.security.jwt_redis import blacklist_token
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+PATIENT_HISTORY_TOKEN_HEADER = "HTTP_X_PATIENT_HISTORY_TOKEN"
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 def _request_ip(request):
@@ -51,6 +58,78 @@ def _request_ip(request):
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
+
+
+def _get_patient_history_token(request):
+    return request.META.get(PATIENT_HISTORY_TOKEN_HEADER) or request.query_params.get("token")
+
+
+def _looks_like_jwt(token: str) -> bool:
+    return token.count(".") == 2
+
+
+def _verify_google_id_token(id_token: str) -> dict | None:
+    client_id = getattr(settings, "SOCIAL_AUTH_GOOGLE_OAUTH2_KEY", "") or ""
+    if not client_id:
+        logger.error("google_oauth_missing_client_id")
+        return None
+    try:
+        response = requests.get(
+            GOOGLE_TOKENINFO_URL,
+            params={"id_token": id_token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.warning("google_oauth_tokeninfo_failed error=%s", exc)
+        return None
+
+    if payload.get("aud") != client_id:
+        logger.warning("google_oauth_invalid_audience aud=%s", payload.get("aud"))
+        return None
+    if payload.get("email_verified") not in (True, "true", "True", "1"):
+        logger.warning("google_oauth_email_not_verified email=%s", payload.get("email"))
+        return None
+    return payload
+
+
+def _username_from_google_payload(payload: dict) -> str:
+    email = (payload.get("email") or "").strip().lower()
+    base = email.split("@")[0] if email else f"google_{payload.get('sub', '')[:12]}"
+    candidate = base[:150] or f"google_{get_random_string(12)}"
+    if not User.objects.filter(username=candidate).exists():
+        return candidate
+    return f"{candidate}_{get_random_string(6)}"[:150]
+
+
+def _get_or_create_google_user(payload: dict, requested_tipo: str | None = None):
+    email = (payload.get("email") or "").strip().lower()
+    if not email:
+        return None
+
+    user = User.objects.filter(email=email).first()
+    if user is None:
+        user = User.objects.create_user(
+            username=_username_from_google_payload(payload),
+            email=email,
+            password=None,
+            first_name=(payload.get("given_name") or payload.get("name") or "")[:150],
+            last_name=(payload.get("family_name") or "")[:150],
+            tipo=requested_tipo or "patient",
+        )
+        user.set_unusable_password()
+
+    user.oauth_provider = "google"
+    user.oauth_uid = payload.get("sub") or user.oauth_uid
+    if requested_tipo and not user.tipo:
+        user.tipo = requested_tipo
+    if payload.get("given_name"):
+        user.first_name = payload["given_name"][:150]
+    if payload.get("family_name"):
+        user.last_name = payload["family_name"][:150]
+    user.save()
+    return user
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
@@ -139,6 +218,32 @@ class GoogleOAuthLoginView(APIView):
 
         token = serializer.validated_data['token']
         provider = 'google-oauth2'
+        requested_tipo = request.data.get('tipo', 'patient')
+
+        if _looks_like_jwt(token):
+            payload = _verify_google_id_token(token)
+            if not payload:
+                return Response(
+                    {"error": "Token de Google inválido."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user = _get_or_create_google_user(payload, requested_tipo=requested_tipo)
+            if not user:
+                return Response(
+                    {"error": "No se pudo obtener el correo del usuario de Google."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            refresh = RefreshToken.for_user(user)
+            response_data = {
+                'user': UserProfileSerializerBasic(user).data,
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'is_new_user': False,
+                'profile_complete': user.is_profile_completed
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
 
         try:
             strategy = load_strategy(request)
@@ -157,7 +262,7 @@ class GoogleOAuthLoginView(APIView):
             is_new_user = user.date_joined == user.last_login
 
             if is_new_user and 'tipo' in request.data:
-                user.tipo = request.data.get('tipo', 'patient')
+                user.tipo = requested_tipo
 
             user.save(update_fields=['oauth_provider', 'oauth_uid', 'tipo'])
 
@@ -422,6 +527,21 @@ class PatientMedicalDataUpdateView(APIView):
             # Obtener la última entrada de historial creada
             latest_history = patient.history_entries.first()
             patient.refresh_from_db()
+            summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+            summary.sync_from_patient(
+                triage_history=list(
+                    patient.history_entries.exclude(triaje_level__isnull=True).exclude(triaje_level="").values_list("triaje_level", flat=True)[:5]
+                ),
+                episode_snapshot={
+                    "updated_from": source,
+                    "facts_summary": serializer.validated_data.get("facts_summary", {}),
+                    "medical_context": serializer.validated_data.get("medical_context"),
+                    "pain_scale": serializer.validated_data.get("pain_scale"),
+                    "triaje_level": serializer.validated_data.get("triaje_level"),
+                },
+                clinical_flags={"source": source, "internal_request": internal_request},
+            )
+            push_clinical_summary_to_ai(summary)
             after_snapshot = patient.clinical_snapshot()
             create_audit_entry(
                 actor_user=authenticated_user,
@@ -440,6 +560,7 @@ class PatientMedicalDataUpdateView(APIView):
             return Response({
                 "message": "Información del paciente actualizada correctamente",
                 "patient": PatientSerializer(patient).data,
+                "clinical_summary": PatientClinicalSummaryContextSerializer(summary).data,
                 "profile_complete": user.is_profile_completed,
                 "history_entry": PatientHistoryEntrySerializer(latest_history).data if latest_history else None
             }, status=status.HTTP_200_OK)
@@ -448,6 +569,65 @@ class PatientMedicalDataUpdateView(APIView):
                 "message": "No se realizaron cambios en la información del paciente"
             }, status=status.HTTP_200_OK)
 
+
+class PatientClinicalSummaryInternalView(APIView):
+    permission_classes = [AllowAny]
+
+    def _canonical_payload(self, payload):
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _is_valid_internal_request(self, request):
+        request_timestamp = request.headers.get("X-Request-Timestamp", "")
+        request_signature = request.headers.get("X-Request-Signature", "")
+        shared_secret = getattr(settings, "FLASK_API_KEY", "") or ""
+        if not request_timestamp or not request_signature or not shared_secret:
+            return False
+        try:
+            skew = abs(int(time.time()) - int(request_timestamp))
+        except (TypeError, ValueError):
+            return False
+        if skew > 30:
+            return False
+        canonical_payload = self._canonical_payload(request.data if request.method != "GET" else request.query_params.dict())
+        expected_signature = hmac.new(
+            shared_secret.encode("utf-8"),
+            f"{request_timestamp}:{canonical_payload}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected_signature, request_signature)
+
+    def _resolve_patient(self, request):
+        user_id = request.query_params.get("user_id") or request.data.get("user_id")
+        patient_id = request.query_params.get("patient_id") or request.data.get("patient_id")
+        if patient_id:
+            return get_object_or_404(Patient, id=patient_id)
+        if user_id:
+            return get_object_or_404(Patient, user_id=user_id)
+        raise Http404("Se requiere user_id o patient_id.")
+
+    def get(self, request):
+        if not self._is_valid_internal_request(request):
+            raise PermissionDenied("Se requiere autenticación interna válida.")
+        patient = self._resolve_patient(request)
+        summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+        return Response(PatientClinicalSummaryContextSerializer(summary).data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if not self._is_valid_internal_request(request):
+            raise PermissionDenied("Se requiere autenticación interna válida.")
+        patient = self._resolve_patient(request)
+        summary, _created = PatientClinicalSummary.objects.get_or_create(patient=patient)
+        triage_history = request.data.get("recent_triage_history")
+        episode_snapshot = request.data.get("active_episode_snapshot")
+        clinical_flags = request.data.get("clinical_flags")
+        summary.sync_from_patient(
+            triage_history=triage_history,
+            episode_snapshot=episode_snapshot,
+            clinical_flags=clinical_flags,
+        )
+        push_clinical_summary_to_ai(summary)
+        return Response(PatientClinicalSummarySerializer(summary).data, status=status.HTTP_200_OK)
+
 class PatientViewSet(viewsets.ModelViewSet):
     """ViewSet para administrar pacientes (doctor y admin)"""
     queryset = Patient.objects.all()
@@ -455,16 +635,31 @@ class PatientViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = PageNumberPagination  # Añadir paginación
     
+    def _base_queryset(self):
+        active_doctor_relations = DoctorPatientRelation.objects.filter(active=True).select_related("doctor__user")
+        return (
+            Patient.objects.select_related("user", "data_validated_by__user")
+            .annotate(history_count=Count("history_entries", distinct=True))
+            .prefetch_related(
+                Prefetch(
+                    "doctor_relations",
+                    queryset=active_doctor_relations,
+                    to_attr="prefetched_active_doctor_relations",
+                )
+            )
+        )
+
     def get_queryset(self):
         user = self.request.user
+        queryset = self._base_queryset()
         # Los pacientes solo pueden ver su propio perfil
         if user.tipo == 'patient':
-            return Patient.objects.filter(user=user)
+            return queryset.filter(user=user)
         # Doctores solo pueden ver sus pacientes asignados
         elif user.tipo == 'doctor':
             try:
                 doctor = Doctor.objects.get(user=user)
-                return Patient.objects.filter(
+                return queryset.filter(
                     doctor_relations__doctor=doctor,
                     doctor_relations__active=True
                 ).distinct()
@@ -472,7 +667,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                 return Patient.objects.none()
         # Administradores pueden ver todos los pacientes
         elif user.tipo == 'admin':
-            return Patient.objects.all()
+            return queryset
         return Patient.objects.none()
     
     def retrieve(self, request, *args, **kwargs):
@@ -493,7 +688,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         paginator = PageNumberPagination()
         paginator.page_size = 10  # Puedes ajustar esto según necesites
         
-        history_entries = patient.history_entries.all().order_by('-created_at')
+        history_entries = patient.history_entries.select_related('created_by', 'patient__user').order_by('-created_at')
         page = paginator.paginate_queryset(history_entries, request)
         
         if page is not None:
@@ -509,7 +704,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = PageNumberPagination  # Añadir paginación
 
     def _patient_id_from_token(self):
-        token = self.request.query_params.get("token")
+        token = _get_patient_history_token(self.request)
         if not token:
             return None
         try:
@@ -531,7 +726,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             patient = Patient.objects.get(id=patient_id)
             if self._patient_id_from_token():
-                return PatientHistoryEntry.objects.filter(patient=patient).order_by('-created_at')
+                return PatientHistoryEntry.objects.filter(patient=patient).select_related('created_by', 'patient__user').order_by('-created_at')
             
             # Pacientes solo pueden ver su propio historial
             if not getattr(user, "is_authenticated", False):
@@ -552,7 +747,7 @@ class PatientHistoryViewSet(viewsets.ReadOnlyModelViewSet):
                     return PatientHistoryEntry.objects.none()
             
             # Retornar historial ordenado por fecha (más reciente primero)
-            return PatientHistoryEntry.objects.filter(patient=patient).order_by('-created_at')
+            return PatientHistoryEntry.objects.filter(patient=patient).select_related('created_by', 'patient__user').order_by('-created_at')
             
         except Patient.DoesNotExist:
             return PatientHistoryEntry.objects.none()
@@ -684,7 +879,7 @@ class PatientMeHistoryView(generics.ListAPIView):
     pagination_class = PageNumberPagination
 
     def _patient_from_token(self):
-        token = self.request.query_params.get("token")
+        token = _get_patient_history_token(self.request)
         if not token:
             return None
         try:
@@ -746,16 +941,24 @@ class DoctorViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         user = self.request.user
+        active_patient_relations = DoctorPatientRelation.objects.filter(active=True).select_related("patient__user")
+        queryset = Doctor.objects.select_related('user').prefetch_related(
+            Prefetch(
+                'patient_relations',
+                queryset=active_patient_relations,
+                to_attr='prefetched_active_patient_relations',
+            )
+        )
         # Los doctores solo pueden ver su propio perfil
         if user.tipo == 'doctor':
-            return Doctor.objects.filter(user=user)
+            return queryset.filter(user=user)
         # Administradores pueden ver todos los doctores
         elif user.tipo == 'admin':
-            return Doctor.objects.all()
+            return queryset
         # Pacientes pueden ver la lista de doctores pero sin detalles sensibles
         elif user.tipo == 'patient' and self.action == 'list':
             # Para pacientes, mostrar solo doctores activos
-            return Doctor.objects.filter(user__is_active=True)
+            return queryset.filter(user__is_active=True)
         return Doctor.objects.none()
     
     def retrieve(self, request, *args, **kwargs):
@@ -1033,6 +1236,14 @@ class ChangePasswordView(APIView):
         # Establecer la nueva contraseña
         user.set_password(serializer.validated_data['new_password'])
         user.save()
+        user.refresh_from_db()
+        profile_complete = user.check_profile_completion()
+        logger.info(
+            "password_change_preserved_profile_status user_id=%s profile_complete=%s tipo=%s",
+            user.id,
+            profile_complete,
+            user.tipo,
+        )
         
         # Generar nuevos tokens para mantener la sesión del usuario
         refresh = RefreshToken.for_user(user)
@@ -1040,7 +1251,9 @@ class ChangePasswordView(APIView):
         return Response({
             "message": "Tu contraseña ha sido cambiada correctamente.",
             "refresh": str(refresh),
-            "access": str(refresh.access_token)
+            "access": str(refresh.access_token),
+            "profile_complete": profile_complete,
+            "user": UserProfileSerializer(user).data,
         }, status=status.HTTP_200_OK)
 
 class AccountDeleteView(APIView):
@@ -1114,28 +1327,17 @@ class LogoutView(APIView):
             refresh_token = request.data.get("refresh")
             
             if not refresh_token:
-
-                try:
-                    # Get all outstanding tokens for this user
-                    tokens = OutstandingToken.objects.filter(user_id=request.user.id)
-                    # Blacklist all tokens
-                    for token in tokens:
-                        BlacklistedToken.objects.get_or_create(token=token)
-                    
-                    return Response(
-                        {"message": "Todas las sesiones han sido cerradas correctamente."},
-                        status=status.HTTP_205_RESET_CONTENT
-                    )
-                except Exception as e:
-                    return Response(
-                        {"error": "No se proporcionó token de refresh y no se pudieron invalidar todas las sesiones.", 
-                         "details": str(e)},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                tokens = OutstandingToken.objects.filter(user_id=request.user.id)
+                for token in tokens:
+                    BlacklistedToken.objects.get_or_create(token=token)
+                return Response(
+                    {"message": "Todas las sesiones han sido cerradas correctamente."},
+                    status=status.HTTP_205_RESET_CONTENT
+                )
             
             # If refresh token is provided, blacklist it
             token = RefreshToken(refresh_token)
-            token.blacklist()
+            blacklist_token(token)
             
             return Response(
                 {"message": "Sesión cerrada correctamente."},
@@ -1151,3 +1353,4 @@ class LogoutView(APIView):
                 {"error": "Error al cerrar sesión.", "details": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken

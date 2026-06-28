@@ -2,9 +2,20 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework.validators import UniqueValidator
-from .models import Patient, Doctor, DoctorPatientRelation, PatientHistoryEntry
+import re
+from .models import Patient, Doctor, DoctorPatientRelation, PatientHistoryEntry, PatientClinicalSummary
 
 User = get_user_model()
+
+
+def _normalize_compact_summary(*parts):
+    text = " ".join(str(part or "").strip() for part in parts if part)
+    if not text:
+        return "Actualización clínica"
+    text = re.sub(r"`{1,3}([^`]+)`{1,3}", r"\1", text)
+    text = re.sub(r"[*_#>\-\[\]\(\)]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" .,-")
+    return text[:220].strip() or "Actualización clínica"
 
 class UserSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -80,7 +91,7 @@ class DoctorPatientRelationSerializer(serializers.ModelSerializer):
         return f"{obj.patient.user.first_name} {obj.patient.user.last_name}"
 
 class PatientSerializer(serializers.ModelSerializer):
-    doctors = DoctorBasicSerializer(many=True, read_only=True)
+    doctors = serializers.SerializerMethodField(read_only=True)
     data_validator = serializers.SerializerMethodField(read_only=True)
     history_count = serializers.SerializerMethodField(read_only=True)
     
@@ -97,12 +108,22 @@ class PatientSerializer(serializers.ModelSerializer):
         if obj.data_validated_by:
             return f"Dr. {obj.data_validated_by.user.first_name} {obj.data_validated_by.user.last_name}"
         return None
+
+    def get_doctors(self, obj):
+        relations = getattr(obj, "prefetched_active_doctor_relations", None)
+        if relations is None:
+            relations = obj.doctor_relations.filter(active=True).select_related("doctor__user")
+        doctors = [relation.doctor for relation in relations if relation.doctor_id]
+        return DoctorBasicSerializer(doctors, many=True).data
     
     def get_history_count(self, obj):
+        annotated_value = getattr(obj, "history_count", None)
+        if annotated_value is not None:
+            return annotated_value
         return obj.history_entries.count()
 
 class DoctorSerializer(serializers.ModelSerializer):
-    patients = PatientBasicSerializer(many=True, read_only=True)
+    patients = serializers.SerializerMethodField(read_only=True)
     full_name = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
@@ -112,6 +133,13 @@ class DoctorSerializer(serializers.ModelSerializer):
     
     def get_full_name(self, obj):
         return f"Dr. {obj.user.first_name} {obj.user.last_name}"
+
+    def get_patients(self, obj):
+        relations = getattr(obj, "prefetched_active_patient_relations", None)
+        if relations is None:
+            relations = obj.patient_relations.filter(active=True).select_related("patient__user")
+        patients = [relation.patient for relation in relations if relation.patient_id]
+        return PatientBasicSerializer(patients, many=True).data
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -267,13 +295,14 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
     """Serializador para las entradas del historial médico del paciente"""
     created_by_name = serializers.SerializerMethodField(read_only=True)
     source_display = serializers.SerializerMethodField(read_only=True)
+    compact_summary = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = PatientHistoryEntry
         fields = ('id', 'created_at', 'source', 'source_display', 'created_by', 'created_by_name',
                   'notes', 'triaje_level', 'pain_scale', 'medical_context', 'allergies',
-                  'medications', 'medical_history', 'ocupacion')
-        read_only_fields = ('id', 'created_at', 'created_by_name', 'source_display')
+                  'compact_summary', 'medications', 'medical_history', 'ocupacion')
+        read_only_fields = ('id', 'created_at', 'created_by_name', 'source_display', 'compact_summary')
     
     def get_created_by_name(self, obj):
         if obj.created_by:
@@ -284,3 +313,88 @@ class PatientHistoryEntrySerializer(serializers.ModelSerializer):
     
     def get_source_display(self, obj):
         return dict(PatientHistoryEntry._meta.get_field('source').choices).get(obj.source)
+
+    def get_compact_summary(self, obj):
+        return _normalize_compact_summary(obj.notes, obj.medical_context)
+
+
+class PatientClinicalSummarySerializer(serializers.ModelSerializer):
+    validated_by_name = serializers.SerializerMethodField(read_only=True)
+    summary_text = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = PatientClinicalSummary
+        fields = (
+            'id',
+            'patient',
+            'summary_version',
+            'chief_complaint_current',
+            'known_allergies',
+            'current_medications',
+            'medical_history_known',
+            'risk_factors',
+            'occupation_context',
+            'baseline_pain_context',
+            'recent_triage_history',
+            'active_episode_snapshot',
+            'clinical_flags',
+            'summary',
+            'summary_text',
+            'last_source_update_at',
+            'last_embedding_refresh_at',
+            'is_validated',
+            'validated_by',
+            'validated_by_name',
+            'summary_text',
+            'validated_at',
+            'created_at',
+            'updated_at',
+        )
+        read_only_fields = (
+            'id',
+            'summary_version',
+            'last_source_update_at',
+            'last_embedding_refresh_at',
+            'validated_by_name',
+            'validated_at',
+            'created_at',
+            'updated_at',
+        )
+
+    def get_validated_by_name(self, obj):
+        if obj.validated_by:
+            return f"Dr. {obj.validated_by.user.first_name} {obj.validated_by.user.last_name}"
+        return None
+
+    def get_summary_text(self, obj):
+        return obj.build_summary_text()
+
+
+class PatientClinicalSummaryContextSerializer(serializers.ModelSerializer):
+    summary_text = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = PatientClinicalSummary
+        fields = (
+            'id',
+            'patient',
+            'summary_version',
+            'chief_complaint_current',
+            'known_allergies',
+            'current_medications',
+            'medical_history_known',
+            'risk_factors',
+            'occupation_context',
+            'baseline_pain_context',
+            'recent_triage_history',
+            'active_episode_snapshot',
+            'clinical_flags',
+            'summary',
+            'summary_text',
+            'last_source_update_at',
+            'is_validated',
+        )
+        read_only_fields = fields
+
+    def get_summary_text(self, obj):
+        return obj.build_summary_text()

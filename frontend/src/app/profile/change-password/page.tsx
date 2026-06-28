@@ -13,6 +13,8 @@ import { useRouter } from 'next/navigation';
 import { useApiError } from '@/hooks/useApiError';
 import { TbLock, TbLockOpen, TbDeviceFloppy, TbArrowLeft } from "react-icons/tb";
 import { ROUTES } from '@/routes/routePaths';
+import { useAuth } from '@/hooks/useAuth';
+import { updateAuthCookies } from '@/utils/authSync';
 
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1, { message: 'La contraseña actual es obligatoria' }),
@@ -39,6 +41,7 @@ export default function ChangePassword() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const { error, handleApiError, clearError } = useApiError();
   const router = useRouter();
+  const { refreshProfile } = useAuth();
 
   const onSubmit = async (data: ChangePasswordInputs) => {
     setIsSubmitting(true);
@@ -46,12 +49,17 @@ export default function ChangePassword() {
     setSuccessMessage(null);
 
     try {
-      await apiChangePassword({
-      old_password: data.oldPassword,
-      new_password: data.newPassword,
-      confirm_password: data.confirmPassword
+      const response = await apiChangePassword({
+        old_password: data.oldPassword,
+        new_password: data.newPassword,
+        confirm_password: data.confirmPassword
       });
-    
+
+      sessionStorage.setItem('access_token', response.access);
+      sessionStorage.setItem('refresh_token', response.refresh);
+      updateAuthCookies(response.access);
+      await refreshProfile();
+     
       setSuccessMessage('Contraseña actualizada con éxito');
       reset();
       

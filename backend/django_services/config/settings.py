@@ -87,6 +87,7 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'user-agent',
     'x-csrftoken',
+    'x-patient-history-token',
     'x-requested-with',
 ]
 
@@ -184,7 +185,8 @@ ACCOUNT_EMAIL_VERIFICATION = "optional"
 
 AUTH_USER_MODEL = 'users.User'
 SESSION_COOKIE_AGE = 3600  # 1 hora de sesión
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'default'
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
@@ -199,11 +201,12 @@ CACHE_REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', '')
 CACHE_REDIS_USE_TLS = os.getenv('REDIS_USE_TLS', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 CACHE_REDIS_SCHEME = 'rediss' if CACHE_REDIS_USE_TLS else 'redis'
 CACHE_REDIS_AUTH = f":{CACHE_REDIS_PASSWORD}@" if CACHE_REDIS_PASSWORD else ""
+CACHE_REDIS_DB = os.getenv('REDIS_DB_CACHE', os.getenv('REDIS_DB_SESSIONS', os.getenv('REDIS_DB', '0')))
 
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': f"{CACHE_REDIS_SCHEME}://{CACHE_REDIS_AUTH}{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{os.getenv('REDIS_DB1')}",
+        'LOCATION': f"{CACHE_REDIS_SCHEME}://{CACHE_REDIS_AUTH}{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/{CACHE_REDIS_DB}",
         'OPTIONS': {
             'ssl_cert_reqs': os.getenv('REDIS_SSL_CERT_REQS', 'required'),
         } if CACHE_REDIS_USE_TLS else {},
@@ -218,6 +221,7 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')  # tu dirección de correo electr
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')  # tu contraseña de correo electrónico
 
 FLASK_API_KEY = os.getenv('FLASK_API_KEY', os.getenv('DJANGO_SECRET_KEY', ''))
+AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', '').rstrip('/')
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', '')
 AUDIT_SIGNING_KEY = os.getenv('AUDIT_SIGNING_KEY', '')
 

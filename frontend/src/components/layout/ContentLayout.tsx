@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
 import Loading from "@/components/loading";
@@ -9,10 +9,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePathname, useRouter } from 'next/navigation';
 
 export default function ContentLayout({ children }: { children: React.ReactNode }) {
-    const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, loading, user } = useAuth();
     const pathname = usePathname();
     const router = useRouter();
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
     const safePath = pathname || "";
+    const isHomeRoute = pathname === ROUTES.PUBLIC.HOME;
+    const isAuthRoute = pathname?.startsWith("/auth/");
+    const isChatRoute = pathname === ROUTES.PROTECTED.CHAT;
 
     // Determinar si es una ruta protegida explícitamente
     const isProtectedRoute = Object.values(ROUTES.PROTECTED).some(route => 
@@ -34,27 +38,34 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
     // Handle navigation and auth state
     useEffect(() => {
         if (!loading) {
-            // Manejar redirección de la ruta raíz
-            if (pathname === '/') {
-                if (isAuthenticated) {
-                    router.push(ROUTES.PROTECTED.DASHBOARD);
-                } else {
-                    router.push(ROUTES.PUBLIC.LOGIN);
-                }
-                return;
-            }
-          
             // Manejar acceso a rutas protegidas cuando no está autenticado
             if (!isAuthenticated && (isProtectedRoute || isDoctorRoute)) {
-                router.push(`${ROUTES.PUBLIC.LOGIN}?from=${encodeURIComponent(safePath)}`);
+                router.replace(`${ROUTES.PUBLIC.LOGIN}?from=${encodeURIComponent(safePath)}`);
                 return;
             }
 
+            if (isAuthenticated && user?.tipo === "doctor" && pathname === ROUTES.PROTECTED.DASHBOARD) {
+                router.replace(ROUTES.DOCTOR.DASHBOARD);
+                return;
+            }
+
+            if (isAuthenticated && user?.tipo === "patient" && isDoctorRoute) {
+                router.replace(ROUTES.PROTECTED.DASHBOARD);
+                return;
+            }
         }
-    }, [isAuthenticated, isProtectedRoute, isDoctorRoute, loading, pathname, router, safePath]);
+    }, [isAuthenticated, isProtectedRoute, isDoctorRoute, loading, pathname, router, safePath, user?.tipo]);
+
+    useEffect(() => {
+        setMobileSidebarOpen(false);
+    }, [pathname]);
     
     // Mostrar componente de carga mientras se determina el estado de autenticación
     if (loading) {
+        return <Loading />;
+    }
+
+    if (!isAuthenticated && (isProtectedRoute || isDoctorRoute)) {
         return <Loading />;
     }
 
@@ -62,11 +73,25 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
     if (shouldShowFullLayout) {
         return (
             <div className="flex h-screen bg-gradient-to-b from-slate-100 to-slate-50 dark:from-[#071228] dark:via-[#0B1836] dark:to-[#0E1D40]">
-                <Sidebar />
+                <a
+                    href="#main-content"
+                    className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                >
+                    Saltar al contenido principal
+                </a>
+                {mobileSidebarOpen && (
+                    <button
+                        type="button"
+                        aria-label="Cerrar menú"
+                        className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[1px] md:hidden"
+                        onClick={() => setMobileSidebarOpen(false)}
+                    />
+                )}
+                <Sidebar mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} />
                 <div className="flex flex-col flex-1 overflow-hidden">
-                    <Header />
-                    <main className="flex-1 overflow-y-auto">
-                        <div className="page-container">
+                    <Header onOpenMobileMenu={() => setMobileSidebarOpen(true)} />
+                    <main id="main-content" className="flex-1 overflow-y-auto">
+                        <div className={isChatRoute ? "w-full px-3 py-3 md:px-4 md:py-4" : "page-container"}>
                         {children}
                         </div>
                     </main>
@@ -74,13 +99,27 @@ export default function ContentLayout({ children }: { children: React.ReactNode 
             </div>
         );
     }
+
+    if (isHomeRoute) {
+        return (
+            <div className="min-h-screen bg-background">
+                <a
+                    href="#main-content"
+                    className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-primary focus:px-4 focus:py-2 focus:text-primary-foreground"
+                >
+                    Saltar al contenido principal
+                </a>
+                <main id="main-content">{children}</main>
+            </div>
+        );
+    }
       
     // Layout simple para rutas públicas
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-50 dark:from-[#071228] dark:via-[#0B1836] dark:to-[#0E1D40]">
-            <div className="flex justify-center items-center min-h-screen px-4 py-8">
+        <div className={`min-h-screen ${isAuthRoute ? "auth-shell" : "bg-gradient-to-b from-slate-100 to-slate-50 dark:from-[#071228] dark:via-[#0B1836] dark:to-[#0E1D40]"}`}>
+            <main id="main-content" className={`min-h-screen px-4 py-8 ${isAuthRoute ? "flex items-center justify-center" : ""}`}>
                 {children}
-            </div>
+            </main>
         </div>
     );
 }

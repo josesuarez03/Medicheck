@@ -23,7 +23,11 @@ export const refreshAccessToken = async (): Promise<string | null> => {
     );
     const access = response.data?.access;
     if (!access) return null;
+    const rotatedRefresh = response.data?.refresh;
     sessionStorage.setItem("access_token", access);
+    if (rotatedRefresh) {
+      sessionStorage.setItem("refresh_token", rotatedRefresh);
+    }
     return access;
   } catch {
     clearAuthTokens();
